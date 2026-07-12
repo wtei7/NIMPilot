@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "last_discover": null,
+  "last_benchmark": null,
+  "last_config_generation": null,
+  "litellm_status": "stopped",
+  "litellm_pid": null
+}

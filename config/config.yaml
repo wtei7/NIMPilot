@@ -1,0 +1,29 @@
+server:
+  host: "0.0.0.0"
+  port: 8000
+  workers: 1
+
+litellm:
+  port: 4000
+  config_path: "config/generated.yaml"
+  log_path: "logs/litellm.log"
+
+discover:
+  api_base: "https://integrate.api.nvidia.com/v1"
+  cache_path: "cache/models.json"
+  timeout: 30
+
+benchmark:
+  warmup_tokens: 100
+  test_tokens: 500
+  max_concurrent: 1
+  metrics:
+    - ttft
+    - tps
+    - latency
+
+scheduler:
+  enabled: false
+  discover_cron: "0 */6 * * *"
+  benchmark_cron: "0 3 * * *"
+  reload_cron: "0 */6 * * *"
