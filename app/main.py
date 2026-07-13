@@ -11,6 +11,8 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.config_manager import get_config
+from app.launcher import LiteLLMManager
+from app.storage import get_storage
 from app.utils import NIMPilotError, get_env, get_logger, setup_logging
 
 # 로깅 초기화
@@ -85,3 +87,118 @@ async def dashboard() -> HTMLResponse:
     return HTMLResponse(
         content="<html><body><h1>NIMPilot</h1><p>Dashboard가 아직 구현되지 않았습니다.</p></body></html>"
     )
+
+
+# ---------------------------------------------------------------------------
+# Dashboard API 엔드포인트
+# ---------------------------------------------------------------------------
+
+# 저장소 싱글톤
+_storage = get_storage()
+
+
+@app.get("/api/overview")
+async def api_overview() -> dict:
+    """Overview 정보를 반환한다.
+
+    Returns:
+        모델 수, LiteLLM 상태, 최고 모델 정보.
+    """
+    models = _storage.load("models")
+    metadata = _storage.load("metadata")
+    benchmark = _storage.load("benchmark")
+    rankings = _storage.load("rankings")
+
+    model_list = models.get("models", []) if models else []
+    model_count = len(model_list)
+
+    litellm_status = metadata.get("litellm_status", "unknown") if metadata else "unknown"
+
+    # Best models from benchmark/rankings
+    best_coding = None
+    best_reasoning = None
+    fastest = None
+
+    if rankings and isinstance(rankings, dict):
+        best_coding = rankings.get("best_coding")
+        best_reasoning = rankings.get("best_reasoning")
+        fastest = rankings.get("fastest")
+    elif benchmark and isinstance(benchmark, dict):
+        results = benchmark.get("results", [])
+        if results:
+            # Sort by tps descending for best coding/reasoning
+            sorted_by_tps = sorted(
+                results, key=lambda r: r.get("tps", 0), reverse=True
+            )
+            if sorted_by_tps:
+                best_coding = sorted_by_tps[0]
+                best_reasoning = sorted_by_tps[0]
+            # Sort by ttft ascending for fastest
+            sorted_by_ttft = sorted(
+                results, key=lambda r: r.get("ttft", float("inf"))
+            )
+            if sorted_by_ttft:
+                fastest = sorted_by_ttft[0]
+
+    return {
+        "model_count": model_count,
+        "litellm_status": litellm_status,
+        "last_discover": metadata.get("last_discover") if metadata else None,
+        "last_benchmark": metadata.get("last_benchmark") if metadata else None,
+        "last_config_generation": metadata.get("last_config_generation") if metadata else None,
+        "best_coding_model": best_coding,
+        "best_reasoning_model": best_reasoning,
+        "fastest_model": fastest,
+    }
+
+
+@app.get("/api/models")
+async def api_models() -> dict:
+    """전체 모델 목록을 반환한다.
+
+    Returns:
+        모델 목록 딕셔너리.
+    """
+    models = _storage.load("models")
+    if not models:
+        return {"models": []}
+    return models
+
+
+@app.get("/api/status")
+async def api_status() -> dict:
+    """LiteLLM 컨테이너 상태를 반환한다.
+
+    Returns:
+        LiteLLM 상태 딕셔너리.
+    """
+    manager = LiteLLMManager(config=config, storage=_storage)
+    return manager.status()
+
+
+@app.post("/api/litellm/start")
+async def api_litellm_start() -> dict:
+    """LiteLLM 컨테이너를 시작한다."""
+    manager = LiteLLMManager(config=config, storage=_storage)
+    return manager.start()
+
+
+@app.post("/api/litellm/stop")
+async def api_litellm_stop() -> dict:
+    """LiteLLM 컨테이너를 중지한다."""
+    manager = LiteLLMManager(config=config, storage=_storage)
+    return manager.stop()
+
+
+@app.post("/api/litellm/restart")
+async def api_litellm_restart() -> dict:
+    """LiteLLM 컨테이너를 재시작한다."""
+    manager = LiteLLMManager(config=config, storage=_storage)
+    return manager.restart()
+
+
+@app.post("/api/litellm/reload")
+async def api_litellm_reload() -> dict:
+    """LiteLLM Config를 리로드한다."""
+    manager = LiteLLMManager(config=config, storage=_storage)
+    return manager.reload()

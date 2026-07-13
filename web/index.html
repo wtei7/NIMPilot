@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NIMPilot Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <header>
+        <h1>NIMPilot</h1>
+        <span class="subtitle">NVIDIA NIM 모델 자동 탐색 및 최적화</span>
+    </header>
+
+    <!-- Overview Section -->
+    <section id="overview">
+        <h2>Overview</h2>
+        <div class="cards">
+            <div class="card">
+                <div class="card-label">Model Count</div>
+                <div class="card-value" id="model-count">-</div>
+            </div>
+            <div class="card">
+                <div class="card-label">LiteLLM Status</div>
+                <div class="card-value" id="litellm-status">-</div>
+            </div>
+            <div class="card">
+                <div class="card-label">Best Coding Model</div>
+                <div class="card-value" id="best-coding">-</div>
+            </div>
+            <div class="card">
+                <div class="card-label">Best Reasoning Model</div>
+                <div class="card-value" id="best-reasoning">-</div>
+            </div>
+            <div class="card">
+                <div class="card-label">Fastest Model</div>
+                <div class="card-value" id="fastest-model">-</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Buttons Section -->
+    <section id="actions">
+        <h2>Actions</h2>
+        <div class="buttons">
+            <button id="btn-discover" onclick="discoverModels()">Update Models</button>
+            <button id="btn-benchmark" onclick="runBenchmark()">Run Benchmark</button>
+            <button id="btn-generate" onclick="generateConfig()">Generate Config</button>
+            <button id="btn-reload" onclick="reloadLiteLLM()">Reload LiteLLM</button>
+            <button id="btn-export" onclick="exportConfig()">Export Config</button>
+            <button id="btn-start" onclick="startLiteLLM()">Start LiteLLM</button>
+            <button id="btn-stop" onclick="stopLiteLLM()">Stop LiteLLM</button>
+            <button id="btn-restart" onclick="restartLiteLLM()">Restart LiteLLM</button>
+        </div>
+    </section>
+
+    <!-- Model Table Section -->
+    <section id="model-table-section">
+        <h2>Model Table</h2>
+        <div class="table-container">
+            <table id="model-table">
+                <thead>
+                    <tr>
+                        <th>Model ID</th>
+                        <th>Alias</th>
+                        <th>Context Length</th>
+                        <th>Capabilities</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody id="model-table-body">
+                    <tr><td colspan="5" class="loading">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <!-- Charts Section -->
+    <section id="charts">
+        <h2>Charts</h2>
+        <div class="charts-container">
+            <div class="chart-box">
+                <h3>TPS (Tokens per Second)</h3>
+                <canvas id="chart-tps" width="600" height="300"></canvas>
+            </div>
+            <div class="chart-box">
+                <h3>TTFT (Time to First Token)</h3>
+                <canvas id="chart-ttft" width="600" height="300"></canvas>
+            </div>
+        </div>
+    </section>
+
+    <!-- Logs Section -->
+    <section id="logs">
+        <h2>Logs</h2>
+        <div class="logs-container" id="logs-container">
+            <p class="log-empty">No logs yet.</p>
+        </div>
+    </section>
+
+    <footer>
+        <p>NIMPilot v0.1.0 &middot; <a href="/docs">API Docs</a></p>
+    </footer>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
