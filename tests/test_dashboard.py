@@ -84,7 +84,7 @@ class TestHealth:
         """GET /health가 200을 반환한다."""
         res = client.get("/health")
         assert res.status_code == 200
-        assert res.json()["status"] == "ok"
+        assert res.json()["status"] == "healthy"
 
 
 # ---------------------------------------------------------------------------

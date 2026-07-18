@@ -59,6 +59,20 @@ class RankingEngine:
         self.storage = storage or get_storage()
         logger.debug("RankingEngine 초기화")
 
+    @staticmethod
+    def _extract_metrics(result: dict[str, Any]) -> dict[str, Any]:
+        """벤치마크 결과에서 메트릭을 추출한다.
+
+        결과에 "metrics" 키가 있으면 그 안에서, 없으면 최상위에서 찾는다.
+
+        Args:
+            result: 벤치마크 결과 딕셔너리.
+
+        Returns:
+            메트릭 딕셔너리.
+        """
+        return result.get("metrics", result)
+
     def calculate_scores(
         self, benchmark_results: list[dict[str, Any]]
     ) -> list[dict[str, Any]]:
@@ -73,23 +87,50 @@ class RankingEngine:
         if not benchmark_results:
             return []
 
-        successful = [r for r in benchmark_results if r.get("status") == "success"]
+        # status가 "success"이거나 status 필드가 없는 결과를 사용
+        successful = [
+            r for r in benchmark_results
+            if r.get("status", "success") == "success"
+        ]
         if not successful:
             return []
 
-        max_tps = max(r.get("tps", 0) for r in successful) or 1
-        min_ttft = min(r.get("ttft", float("inf")) for r in successful) or 0.001
-        max_ttft = max(r.get("ttft", 0) for r in successful) or 1
-        min_latency = min(r.get("latency", float("inf")) for r in successful) or 0.001
-        max_latency = max(r.get("latency", 0) for r in successful) or 1
+        def _tps(r: dict[str, Any]) -> float:
+            return self._extract_metrics(r).get("tps", 0)
+
+        def _ttft(r: dict[str, Any]) -> float:
+            m = self._extract_metrics(r)
+            return m.get("ttft_ms", m.get("ttft", 0))
+
+        def _latency(r: dict[str, Any]) -> float:
+            m = self._extract_metrics(r)
+            return m.get("latency_ms", m.get("latency", 0))
+
+        def _tool(r: dict[str, Any]) -> bool:
+            return self._extract_metrics(r).get(
+                "tool_calling_success",
+                self._extract_metrics(r).get("tool_calling", False),
+            )
+
+        def _json(r: dict[str, Any]) -> bool:
+            return self._extract_metrics(r).get(
+                "json_mode_success",
+                self._extract_metrics(r).get("json_mode", False),
+            )
+
+        max_tps = max(_tps(r) for r in successful) or 1
+        min_ttft = min(_ttft(r) for r in successful) or 0.001
+        max_ttft = max(_ttft(r) for r in successful) or 1
+        min_latency = min(_latency(r) for r in successful) or 0.001
+        max_latency = max(_latency(r) for r in successful) or 1
 
         rankings: list[dict[str, Any]] = []
         for result in successful:
-            norm_tps = result.get("tps", 0) / max_tps
-            norm_ttft = 1.0 - ((result.get("ttft", max_ttft) - min_ttft) / (max_ttft - min_ttft or 1))
-            norm_latency = 1.0 - ((result.get("latency", max_latency) - min_latency) / (max_latency - min_latency or 1))
-            norm_tool = 1.0 if result.get("tool_calling") else 0.0
-            norm_json = 1.0 if result.get("json_mode") else 0.0
+            norm_tps = _tps(result) / max_tps
+            norm_ttft = 1.0 - ((_ttft(result) - min_ttft) / (max_ttft - min_ttft or 1))
+            norm_latency = 1.0 - ((_latency(result) - min_latency) / (max_latency - min_latency or 1))
+            norm_tool = 1.0 if _tool(result) else 0.0
+            norm_json = 1.0 if _json(result) else 0.0
 
             score = (
                 norm_tps * self.WEIGHTS["tps"] +
@@ -103,11 +144,11 @@ class RankingEngine:
                 "model_id": result.get("model_id"),
                 "alias": result.get("alias"),
                 "score": round(score, 4),
-                "tps": result.get("tps", 0),
-                "ttft": result.get("ttft", 0),
-                "latency": result.get("latency", 0),
-                "tool_calling": result.get("tool_calling", False),
-                "json_mode": result.get("json_mode", False),
+                "tps": _tps(result),
+                "ttft": _ttft(result),
+                "latency": _latency(result),
+                "tool_calling": _tool(result),
+                "json_mode": _json(result),
             })
 
         rankings.sort(key=lambda x: x["score"], reverse=True)
@@ -137,23 +178,50 @@ class RankingEngine:
 
         weights = self.PROFILE_WEIGHTS.get(profile, self.WEIGHTS) if profile else self.WEIGHTS
 
-        successful = [r for r in results if r.get("status") == "success"]
+        # status가 "success"이거나 status 필드가 없는 결과를 사용
+        successful = [
+            r for r in results
+            if r.get("status", "success") == "success"
+        ]
         if not successful:
             return []
 
-        max_tps = max(r.get("tps", 0) for r in successful) or 1
-        min_ttft = min(r.get("ttft", float("inf")) for r in successful) or 0.001
-        max_ttft = max(r.get("ttft", 0) for r in successful) or 1
-        min_latency = min(r.get("latency", float("inf")) for r in successful) or 0.001
-        max_latency = max(r.get("latency", 0) for r in successful) or 1
+        def _tps(r: dict[str, Any]) -> float:
+            return self._extract_metrics(r).get("tps", 0)
+
+        def _ttft(r: dict[str, Any]) -> float:
+            m = self._extract_metrics(r)
+            return m.get("ttft_ms", m.get("ttft", 0))
+
+        def _latency(r: dict[str, Any]) -> float:
+            m = self._extract_metrics(r)
+            return m.get("latency_ms", m.get("latency", 0))
+
+        def _tool(r: dict[str, Any]) -> bool:
+            return self._extract_metrics(r).get(
+                "tool_calling_success",
+                self._extract_metrics(r).get("tool_calling", False),
+            )
+
+        def _json(r: dict[str, Any]) -> bool:
+            return self._extract_metrics(r).get(
+                "json_mode_success",
+                self._extract_metrics(r).get("json_mode", False),
+            )
+
+        max_tps = max(_tps(r) for r in successful) or 1
+        min_ttft = min(_ttft(r) for r in successful) or 0.001
+        max_ttft = max(_ttft(r) for r in successful) or 1
+        min_latency = min(_latency(r) for r in successful) or 0.001
+        max_latency = max(_latency(r) for r in successful) or 1
 
         recommendations: list[dict[str, Any]] = []
         for result in successful:
-            norm_tps = result.get("tps", 0) / max_tps
-            norm_ttft = 1.0 - ((result.get("ttft", max_ttft) - min_ttft) / (max_ttft - min_ttft or 1))
-            norm_latency = 1.0 - ((result.get("latency", max_latency) - min_latency) / (max_latency - min_latency or 1))
-            norm_tool = 1.0 if result.get("tool_calling") else 0.0
-            norm_json = 1.0 if result.get("json_mode") else 0.0
+            norm_tps = _tps(result) / max_tps
+            norm_ttft = 1.0 - ((_ttft(result) - min_ttft) / (max_ttft - min_ttft or 1))
+            norm_latency = 1.0 - ((_latency(result) - min_latency) / (max_latency - min_latency or 1))
+            norm_tool = 1.0 if _tool(result) else 0.0
+            norm_json = 1.0 if _json(result) else 0.0
 
             score = (
                 norm_tps * weights["tps"] +
@@ -167,8 +235,8 @@ class RankingEngine:
                 "model_id": result.get("model_id"),
                 "alias": result.get("alias"),
                 "score": round(score, 4),
-                "tps": result.get("tps", 0),
-                "ttft": result.get("ttft", 0),
+                "tps": _tps(result),
+                "ttft": _ttft(result),
                 "profile": profile or "general",
             })
 

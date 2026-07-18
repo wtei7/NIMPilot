@@ -1,19 +1,22 @@
 """NIMPilot FastAPI 애플리케이션 진입점.
 
 Docker 컨테이너 실행 시 uvicorn이 이 모듈의 `app` 객체를 로드한다.
-Task 001에서는 헬스체크 엔드포인트와 글로벌 예외 핸들러만 제공한다.
+Task 008: REST API 엔드포인트 구현 (docs/03-api.md 명세 준수).
 """
 
+import asyncio
 import os
+from typing import Any
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 from app.config_manager import get_config
 from app.launcher import LiteLLMManager
 from app.storage import get_storage
-from app.utils import NIMPilotError, get_env, get_logger, setup_logging
+from app.utils import NIMPilotError, get_env, get_logger, setup_logging, timestamp
 
 # 로깅 초기화
 log_level = get_env("LOG_LEVEL", "INFO")
@@ -22,6 +25,9 @@ logger = get_logger("api")
 
 # 설정 로드 (싱글톤 초기화)
 config = get_config()
+
+# 저장소 싱글톤
+_storage = get_storage()
 
 app = FastAPI(
     title="NIMPilot",
@@ -50,18 +56,54 @@ async def nimpilot_exception_handler(
         "BAD_REQUEST": 400,
         "SERVICE_UNAVAILABLE": 503,
     }
-    status = status_map.get(exc.code, 500)
+    status_code = status_map.get(exc.code, 500)
     logger.error(
         "API 에러: %s (code=%s, path=%s)", exc.message, exc.code, request.url.path
     )
     return JSONResponse(
-        status_code=status,
+        status_code=status_code,
         content={"error": {"code": exc.code, "message": exc.message, "details": {}}},
     )
 
 
 # ---------------------------------------------------------------------------
-# 엔드포인트
+# Pydantic Models (Request Body)
+# ---------------------------------------------------------------------------
+
+
+class BenchmarkRequest(BaseModel):
+    """벤치마크 실행 요청."""
+
+    model_ids: list[str] | None = None
+    metrics: list[str] | None = None
+
+
+class RouterReloadRequest(BaseModel):
+    """Router reload 요청."""
+
+    mode: str | None = None
+
+
+class ProfileRequest(BaseModel):
+    """프로필 생성/수정 요청."""
+
+    name: str
+    description: str | None = None
+    preferred_metrics: list[str] | None = None
+    model_ids: list[str] | None = None
+
+
+# ---------------------------------------------------------------------------
+# 전역 태스크 상태 (간단한 인메모리 추적)
+# ---------------------------------------------------------------------------
+
+_running_tasks: dict[str, dict[str, Any]] = {}
+
+app_start_time = timestamp()
+
+
+# ---------------------------------------------------------------------------
+# Health & Status
 # ---------------------------------------------------------------------------
 
 
@@ -71,7 +113,36 @@ async def health() -> dict[str, str]:
 
     Docker healthcheck에서 사용한다.
     """
-    return {"status": "ok"}
+    return {"status": "healthy", "version": "0.1.0"}
+
+
+@app.get("/status")
+async def status() -> dict[str, Any]:
+    """NIMPilot 전체 상태 조회."""
+    models = _storage.load("models")
+    metadata = _storage.load("metadata")
+
+    model_list = models.get("models", []) if models else []
+
+    # LiteLLM 상태
+    manager = LiteLLMManager(config=config, storage=_storage)
+    litellm_status = manager.status()
+
+    # 스케줄러 상태 (향후 구현, 현재는 placeholder)
+    scheduler_data = _storage.load("scheduler")
+
+    return {
+        "litellm": litellm_status,
+        "models_count": len(model_list),
+        "last_discover": metadata.get("last_discover") if metadata else None,
+        "last_benchmark": metadata.get("last_benchmark") if metadata else None,
+        "scheduler": {
+            "enabled": scheduler_data.get("enabled", False)
+            if scheduler_data
+            else False,
+            "next_run": scheduler_data.get("next_run") if scheduler_data else None,
+        },
+    }
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -85,16 +156,354 @@ async def dashboard() -> HTMLResponse:
         with open(index_path, "r", encoding="utf-8") as f:
             return HTMLResponse(content=f.read())
     return HTMLResponse(
-        content="<html><body><h1>NIMPilot</h1><p>Dashboard가 아직 구현되지 않았습니다.</p></body></html>"
+        content="<html><body><h1>NIMPilot</h1>"
+        "<p>Dashboard가 아직 구현되지 않았습니다.</p></body></html>"
     )
 
 
 # ---------------------------------------------------------------------------
-# Dashboard API 엔드포인트
+# Models
 # ---------------------------------------------------------------------------
 
-# 저장소 싱글톤
-_storage = get_storage()
+
+@app.get("/models")
+async def get_models(
+    category: str | None = Query(
+        None, description="필터: coding, chat, reasoning 등"
+    ),
+    search: str | None = Query(None, description="모델명 검색"),
+) -> dict[str, Any]:
+    """탐색된 모델 목록 조회."""
+    data = _storage.load("models")
+    if not data:
+        return {"models": [], "total": 0}
+
+    models = data.get("models", [])
+
+    # 카테고리 필터
+    if category:
+        models = [m for m in models if category in m.get("capabilities", [])]
+
+    # 검색 필터
+    if search:
+        search_lower = search.lower()
+        models = [
+            m
+            for m in models
+            if search_lower in m.get("name", "").lower()
+            or search_lower in m.get("id", "").lower()
+            or search_lower in m.get("alias", "").lower()
+        ]
+
+    return {"models": models, "total": len(models)}
+
+
+@app.get("/models/{model_id:path}")
+async def get_model(model_id: str) -> dict[str, Any]:
+    """단일 모델 상세 조회."""
+    from app.router import Router
+
+    router = Router(config=config, storage=_storage)
+    model = router._find_model(model_id)
+    if not model:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": {
+                    "code": "NOT_FOUND",
+                    "message": f"모델을 찾을 수 없습니다: {model_id}",
+                    "details": {},
+                }
+            },
+        )
+    return model
+
+
+# ---------------------------------------------------------------------------
+# Benchmarks
+# ---------------------------------------------------------------------------
+
+
+@app.get("/benchmarks")
+async def get_benchmarks(
+    model_id: str | None = Query(None, description="특정 모델 필터"),
+    metric: str | None = Query(
+        None, description="특정 메트릭 필터 (ttft, tps 등)"
+    ),
+) -> dict[str, Any]:
+    """벤치마크 결과 조회."""
+    data = _storage.load("benchmark")
+    if not data:
+        return {"benchmarks": []}
+
+    results = data.get("results", [])
+    if not results:
+        return {"benchmarks": []}
+
+    # 모델 필터
+    if model_id:
+        results = [r for r in results if r.get("model_id") == model_id]
+
+    # 메트릭 필터 (각 결과에서 지정된 메트릭만 추출)
+    if metric:
+        metric_key = f"{metric}_ms" if metric in ("ttft", "latency") else metric
+        filtered = []
+        for r in results:
+            metrics = r.get("metrics", {})
+            if metric_key in metrics:
+                filtered.append(
+                    {
+                        "model_id": r.get("model_id"),
+                        "timestamp": r.get("timestamp"),
+                        "metrics": {metric_key: metrics[metric_key]},
+                    }
+                )
+        results = filtered
+
+    return {"benchmarks": results}
+
+
+@app.post("/benchmark")
+async def run_benchmark(req: BenchmarkRequest) -> dict[str, Any]:
+    """벤치마크 실행."""
+    # 이미 실행 중인지 확인
+    if any(
+        t.get("type") == "benchmark" and t.get("status") == "running"
+        for t in _running_tasks.values()
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": {
+                    "code": "CONFLICT",
+                    "message": "이미 벤치마크가 실행 중입니다.",
+                    "details": {},
+                }
+            },
+        )
+
+    task_id = f"bench-{timestamp().replace(':', '').replace('-', '')}-001"
+    _running_tasks[task_id] = {"type": "benchmark", "status": "running"}
+
+    # 비동기로 벤치마크 실행
+    from app.benchmark import BenchmarkRunner
+
+    async def _run() -> None:
+        try:
+            runner = BenchmarkRunner(config=config, storage=_storage)
+            await runner.run()
+            _running_tasks[task_id]["status"] = "completed"
+        except Exception as e:
+            logger.error("벤치마크 실패: %s", str(e))
+            _running_tasks[task_id]["status"] = "failed"
+            _running_tasks[task_id]["error"] = str(e)
+
+    asyncio.create_task(_run())
+
+    # 모델 수
+    models_data = _storage.load("models")
+    model_count = len(models_data.get("models", [])) if models_data else 0
+    if req.model_ids:
+        model_count = len(req.model_ids)
+
+    return {"task_id": task_id, "status": "running", "model_count": model_count}
+
+
+# ---------------------------------------------------------------------------
+# Recommendations
+# ---------------------------------------------------------------------------
+
+
+@app.get("/recommendations")
+async def get_recommendations(
+    profile: str | None = Query(
+        None, description="프로필 기반 추천 (coding, chat 등)"
+    ),
+    limit: int = Query(5, ge=1, le=50, description="반환 개수"),
+) -> dict[str, Any]:
+    """모델 추천 목록 조회."""
+    from app.ranking import RankingEngine
+
+    engine = RankingEngine(storage=_storage)
+    recommendations = engine.get_recommendations(profile=profile, limit=limit)
+
+    result = []
+    for i, rec in enumerate(recommendations, 1):
+        result.append(
+            {
+                "rank": i,
+                "model_id": rec.get("model_id", ""),
+                "score": rec.get("score", 0),
+                "reason": rec.get("reason", ""),
+            }
+        )
+
+    return {"recommendations": result}
+
+
+# ---------------------------------------------------------------------------
+# Discover
+# ---------------------------------------------------------------------------
+
+
+@app.post("/discover")
+async def run_discover() -> dict[str, Any]:
+    """NVIDIA 모델 재탐색 실행."""
+    # 이미 실행 중인지 확인
+    if any(
+        t.get("type") == "discover" and t.get("status") == "running"
+        for t in _running_tasks.values()
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": {
+                    "code": "CONFLICT",
+                    "message": "이미 탐색 중입니다.",
+                    "details": {},
+                }
+            },
+        )
+
+    task_id = f"discover-{timestamp().replace(':', '').replace('-', '')}-001"
+    _running_tasks[task_id] = {"type": "discover", "status": "running"}
+
+    from app.discover import DiscoverEngine
+
+    async def _run() -> None:
+        try:
+            engine = DiscoverEngine(config=config, storage=_storage)
+            await engine.run()
+            _running_tasks[task_id]["status"] = "completed"
+        except Exception as e:
+            logger.error("탐색 실패: %s", str(e))
+            _running_tasks[task_id]["status"] = "failed"
+            _running_tasks[task_id]["error"] = str(e)
+
+    asyncio.create_task(_run())
+
+    return {"task_id": task_id, "status": "running"}
+
+
+# ---------------------------------------------------------------------------
+# Config
+# ---------------------------------------------------------------------------
+
+
+@app.post("/generate-config")
+async def generate_config() -> dict[str, Any]:
+    """LiteLLM Config YAML 재생성."""
+    from app.generator import ConfigGenerator
+
+    generator = ConfigGenerator(config=config, storage=_storage)
+    result = generator.run()
+
+    return {
+        "status": "generated",
+        "file": result.get("file", "config/generated.yaml"),
+        "model_count": result.get("model_count", 0),
+    }
+
+
+@app.post("/reload")
+async def reload_litellm() -> dict[str, Any]:
+    """LiteLLM 설정 Reload."""
+    manager = LiteLLMManager(config=config, storage=_storage)
+    manager.reload()
+    return {"status": "reloaded"}
+
+
+# ---------------------------------------------------------------------------
+# Router
+# ---------------------------------------------------------------------------
+
+
+@app.get("/router/config")
+async def get_router_config() -> dict[str, Any]:
+    """현재 Router 설정 조회."""
+    from app.router import Router
+
+    router = Router(config=config, storage=_storage)
+    cfg = router.get_config()
+    return {
+        "mode": cfg["mode"],
+        "fallback_model": cfg["fallback_model"],
+        "rules": cfg["rules"],
+    }
+
+
+@app.post("/router/reload")
+async def reload_router(req: RouterReloadRequest) -> dict[str, Any]:
+    """Router 설정 Reload."""
+    from app.router import Router
+
+    router = Router(config=config, storage=_storage)
+    result = router.reload(mode=req.mode)
+    return {"status": "reloaded", "mode": result["mode"]}
+
+
+# ---------------------------------------------------------------------------
+# Profiles
+# ---------------------------------------------------------------------------
+
+
+@app.get("/profiles")
+async def get_profiles() -> dict[str, Any]:
+    """프로필 목록 조회."""
+    data = _storage.load("profiles")
+    if not data:
+        return {"profiles": []}
+    return {"profiles": data.get("profiles", [])}
+
+
+@app.post("/profiles")
+async def create_or_update_profile(req: ProfileRequest) -> dict[str, Any]:
+    """프로필 생성 또는 수정."""
+    if not req.name:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": {
+                    "code": "BAD_REQUEST",
+                    "message": "프로필 이름이 필요합니다.",
+                    "details": {},
+                }
+            },
+        )
+
+    # 기존 프로필 로드
+    data = _storage.load("profiles") or {"profiles": []}
+    profiles = data.get("profiles", []) if isinstance(data, dict) else []
+
+    # 중복 확인 (생성 시)
+    existing = [p for p in profiles if p.get("name") == req.name]
+    if existing:
+        # 업데이트
+        for p in profiles:
+            if p.get("name") == req.name:
+                p["description"] = req.description or p.get("description", "")
+                p["preferred_metrics"] = req.preferred_metrics or p.get(
+                    "preferred_metrics", []
+                )
+                p["model_ids"] = req.model_ids or p.get("model_ids", [])
+        _storage.save("profiles", {"profiles": profiles})
+        return {"status": "updated", "name": req.name}
+    else:
+        # 신규 생성
+        new_profile: dict[str, Any] = {
+            "name": req.name,
+            "description": req.description or "",
+            "preferred_metrics": req.preferred_metrics or [],
+            "model_ids": req.model_ids or [],
+        }
+        profiles.append(new_profile)
+        _storage.save("profiles", {"profiles": profiles})
+        return {"status": "created", "name": req.name}
+
+
+# ---------------------------------------------------------------------------
+# Dashboard API 엔드포인트 (기존, /api/ prefix)
+# ---------------------------------------------------------------------------
 
 
 @app.get("/api/overview")
@@ -112,7 +521,9 @@ async def api_overview() -> dict:
     model_list = models.get("models", []) if models else []
     model_count = len(model_list)
 
-    litellm_status = metadata.get("litellm_status", "unknown") if metadata else "unknown"
+    litellm_status = (
+        metadata.get("litellm_status", "unknown") if metadata else "unknown"
+    )
 
     # Best models from benchmark/rankings
     best_coding = None
@@ -145,7 +556,9 @@ async def api_overview() -> dict:
         "litellm_status": litellm_status,
         "last_discover": metadata.get("last_discover") if metadata else None,
         "last_benchmark": metadata.get("last_benchmark") if metadata else None,
-        "last_config_generation": metadata.get("last_config_generation") if metadata else None,
+        "last_config_generation": metadata.get("last_config_generation")
+        if metadata
+        else None,
         "best_coding_model": best_coding,
         "best_reasoning_model": best_reasoning,
         "fastest_model": fastest,
@@ -154,7 +567,7 @@ async def api_overview() -> dict:
 
 @app.get("/api/models")
 async def api_models() -> dict:
-    """전체 모델 목록을 반환한다.
+    """전체 모델 목록을 반환한다 (Dashboard용).
 
     Returns:
         모델 목록 딕셔너리.
