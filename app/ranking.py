@@ -5,6 +5,11 @@
 
 from typing import Any
 
+from app.profile import (
+    DEFAULT_WEIGHTS,
+    ProfileService,
+    get_profile_service,
+)
 from app.storage import StorageBackend, get_storage
 from app.utils import get_logger
 
@@ -18,46 +23,35 @@ class RankingEngine:
     프로필별 추천 모델 목록을 제공한다.
     """
 
-    WEIGHTS: dict[str, float] = {
-        "tps": 0.30,
-        "ttft": 0.20,
-        "latency": 0.20,
-        "tool_calling": 0.15,
-        "json_mode": 0.15,
-    }
+    WEIGHTS: dict[str, float] = dict(DEFAULT_WEIGHTS)
 
-    PROFILE_WEIGHTS: dict[str, dict[str, float]] = {
-        "coding": {
-            "tps": 0.35,
-            "ttft": 0.15,
-            "latency": 0.15,
-            "tool_calling": 0.20,
-            "json_mode": 0.15,
-        },
-        "chat": {
-            "tps": 0.25,
-            "ttft": 0.30,
-            "latency": 0.25,
-            "tool_calling": 0.10,
-            "json_mode": 0.10,
-        },
-        "reasoning": {
-            "tps": 0.20,
-            "ttft": 0.15,
-            "latency": 0.15,
-            "tool_calling": 0.25,
-            "json_mode": 0.25,
-        },
-    }
-
-    def __init__(self, storage: StorageBackend | None = None) -> None:
+    def __init__(
+        self,
+        storage: StorageBackend | None = None,
+        profile_service: ProfileService | None = None,
+    ) -> None:
         """RankingEngine 초기화.
 
         Args:
             storage: 저장소 백엔드. None이면 싱글톤 사용.
+            profile_service: 프로필 서비스. None이면 싱글톤 사용.
         """
         self.storage = storage or get_storage()
+        self.profile_service = profile_service or get_profile_service()
         logger.debug("RankingEngine 초기화")
+
+    def _get_weights(self, profile: str | None) -> dict[str, float]:
+        """프로필에 해당하는 가중치를 반환한다.
+
+        기본 제공 프로필과 사용자 정의 프로필을 ProfileService를 통해 조회한다.
+
+        Args:
+            profile: 프로필 이름. None이면 기본 가중치.
+
+        Returns:
+            메트릭별 가중치 딕셔너리.
+        """
+        return self.profile_service.get_weights(profile)
 
     @staticmethod
     def _extract_metrics(result: dict[str, Any]) -> dict[str, Any]:
@@ -176,7 +170,7 @@ class RankingEngine:
         if not results:
             return []
 
-        weights = self.PROFILE_WEIGHTS.get(profile, self.WEIGHTS) if profile else self.WEIGHTS
+        weights = self._get_weights(profile) if profile else self.WEIGHTS
 
         # status가 "success"이거나 status 필드가 없는 결과를 사용
         successful = [

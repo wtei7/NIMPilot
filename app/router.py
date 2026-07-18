@@ -7,6 +7,7 @@
 from typing import Any
 
 from app.config_manager import AppConfig, get_config
+from app.profile import ProfileService, get_profile_service
 from app.ranking import RankingEngine
 from app.storage import StorageBackend, get_storage
 from app.utils import RouterError, get_logger, timestamp
@@ -32,6 +33,7 @@ class Router:
         config: AppConfig | None = None,
         storage: StorageBackend | None = None,
         ranking_engine: RankingEngine | None = None,
+        profile_service: ProfileService | None = None,
     ) -> None:
         """Router 초기화.
 
@@ -39,10 +41,14 @@ class Router:
             config: 애플리케이션 설정. None이면 싱글톤 사용.
             storage: 저장소 백엔드. None이면 싱글톤 사용.
             ranking_engine: 랭킹 엔진. None이면 내부에서 생성.
+            profile_service: 프로필 서비스. None이면 싱글톤 사용.
         """
         self.config = config or get_config()
         self.storage = storage or get_storage()
-        self.ranking_engine = ranking_engine or RankingEngine(storage=self.storage)
+        self.profile_service = profile_service or get_profile_service()
+        self.ranking_engine = ranking_engine or RankingEngine(
+            storage=self.storage, profile_service=self.profile_service
+        )
         self._mode: str = "auto"
         self._fallback_model: str = ""
         self._manual_model: str = ""
@@ -296,12 +302,34 @@ class Router:
     def _select_profile(self) -> dict[str, Any]:
         """Profile 모드: 프로필 기반 추천 1위 모델을 선택한다.
 
+        사용자 정의 프로필에 model_ids가 지정된 경우, 첫 번째 모델을 우선 선택한다.
+        그렇지 않으면 랭킹 엔진의 추천 1위 모델을 선택한다.
+
         Returns:
             선택된 모델 정보.
 
         Raises:
             RouterError: 추천 데이터가 없는 경우.
         """
+        # 사용자 정의 프로필의 model_ids 우선 적용
+        profile = self.profile_service.get_profile(self._profile)
+        if profile and not profile.get("builtin", True):
+            model_ids = profile.get("model_ids", [])
+            if model_ids:
+                model = self._find_model(model_ids[0])
+                if model:
+                    logger.info(
+                        "Profile 선택(사용자 지정): %s (profile=%s)",
+                        model.get("id", model_ids[0]),
+                        self._profile,
+                    )
+                    return {
+                        "model_id": model.get("id", model_ids[0]),
+                        "alias": model.get("alias", ""),
+                        "mode": "profile",
+                        "reason": f"프로필 '{self._profile}' 사용자 지정 모델",
+                    }
+
         recommendations = self.ranking_engine.get_recommendations(
             profile=self._profile, limit=1
         )

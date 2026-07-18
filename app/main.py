@@ -8,7 +8,7 @@ import asyncio
 import os
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -449,56 +449,122 @@ async def reload_router(req: RouterReloadRequest) -> dict[str, Any]:
 
 @app.get("/profiles")
 async def get_profiles() -> dict[str, Any]:
-    """프로필 목록 조회."""
-    data = _storage.load("profiles")
-    if not data:
-        return {"profiles": []}
-    return {"profiles": data.get("profiles", [])}
+    """프로필 목록 조회.
+
+    기본 제공 프로필(coding, research, chat, fast, balanced)과
+    사용자 정의 프로필을 모두 반환한다.
+    """
+    from app.profile import get_profile_service
+
+    service = get_profile_service()
+    profiles = service.list_profiles()
+    return {"profiles": profiles}
+
+
+@app.get("/profiles/{name}")
+async def get_profile(name: str) -> dict[str, Any]:
+    """단일 프로필 조회.
+
+    Args:
+        name: 프로필 이름.
+    """
+    from app.profile import get_profile_service
+
+    service = get_profile_service()
+    profile = service.get_profile(name)
+    if not profile:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": {
+                    "code": "NOT_FOUND",
+                    "message": f"프로필을 찾을 수 없습니다: {name}",
+                    "details": {},
+                }
+            },
+        )
+    return profile
 
 
 @app.post("/profiles")
-async def create_or_update_profile(req: ProfileRequest) -> dict[str, Any]:
-    """프로필 생성 또는 수정."""
-    if not req.name:
+async def create_or_update_profile(req: ProfileRequest) -> Any:
+    """프로필 생성 또는 수정.
+
+    기본 프로필 이름은 사용할 수 없다.
+    """
+    from app.profile import ProfileError, get_profile_service
+
+    service = get_profile_service()
+    try:
+        result = service.create_or_update_profile(
+            name=req.name,
+            description=req.description or "",
+            preferred_metrics=req.preferred_metrics or [],
+            model_ids=req.model_ids or [],
+        )
+    except ProfileError as e:
+        status_code = 400 if e.code == "BAD_REQUEST" else 500
         raise HTTPException(
-            status_code=400,
+            status_code=status_code,
             detail={
                 "error": {
-                    "code": "BAD_REQUEST",
-                    "message": "프로필 이름이 필요합니다.",
+                    "code": e.code,
+                    "message": e.message,
                     "details": {},
                 }
             },
         )
 
-    # 기존 프로필 로드
-    data = _storage.load("profiles") or {"profiles": []}
-    profiles = data.get("profiles", []) if isinstance(data, dict) else []
+    if result["status"] == "created":
+        # 201 Created 응답 (HTTPException 대신 Response 사용)
+        from fastapi import Response
 
-    # 중복 확인 (생성 시)
-    existing = [p for p in profiles if p.get("name") == req.name]
-    if existing:
-        # 업데이트
-        for p in profiles:
-            if p.get("name") == req.name:
-                p["description"] = req.description or p.get("description", "")
-                p["preferred_metrics"] = req.preferred_metrics or p.get(
-                    "preferred_metrics", []
-                )
-                p["model_ids"] = req.model_ids or p.get("model_ids", [])
-        _storage.save("profiles", {"profiles": profiles})
-        return {"status": "updated", "name": req.name}
-    else:
-        # 신규 생성
-        new_profile: dict[str, Any] = {
-            "name": req.name,
-            "description": req.description or "",
-            "preferred_metrics": req.preferred_metrics or [],
-            "model_ids": req.model_ids or [],
-        }
-        profiles.append(new_profile)
-        _storage.save("profiles", {"profiles": profiles})
-        return {"status": "created", "name": req.name}
+        return JSONResponse(
+            status_code=201,
+            content=result,
+        )
+    return result
+
+
+@app.delete("/profiles/{name}")
+async def delete_profile(name: str) -> dict[str, Any]:
+    """사용자 정의 프로필 삭제.
+
+    기본 프로필은 삭제할 수 없다.
+
+    Args:
+        name: 프로필 이름.
+    """
+    from app.profile import ProfileError, get_profile_service
+
+    service = get_profile_service()
+    try:
+        deleted = service.delete_profile(name)
+    except ProfileError as e:
+        status_code = 400 if e.code == "BAD_REQUEST" else 500
+        raise HTTPException(
+            status_code=status_code,
+            detail={
+                "error": {
+                    "code": e.code,
+                    "message": e.message,
+                    "details": {},
+                }
+            },
+        )
+
+    if not deleted:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": {
+                    "code": "NOT_FOUND",
+                    "message": f"프로필을 찾을 수 없습니다: {name}",
+                    "details": {},
+                }
+            },
+        )
+    return {"status": "deleted", "name": name}
 
 
 # ---------------------------------------------------------------------------

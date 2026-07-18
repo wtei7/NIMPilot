@@ -111,18 +111,24 @@ def mock_storage():
 
 @pytest.fixture
 def client(mock_storage):
-    """Test client with mocked storage."""
+    """Test client with mocked storage and reset profile service singleton."""
     # 매번 app.main을 reload하여 최신 코드를 사용
     import importlib
 
     import app.main
+    import app.profile
 
     importlib.reload(app.main)
-    with patch("app.main._storage", mock_storage):
+    # ProfileService 싱글톤 리셋 (이전 테스트 상태 유지 방지)
+    app.profile._profile_service = None
+    with patch("app.main._storage", mock_storage), patch(
+        "app.profile.get_storage", return_value=mock_storage
+    ):
         with TestClient(app.main.app) as c:
             yield c
     # 테스트 후 원래 상태로 복원
     importlib.reload(app.main)
+    app.profile._profile_service = None
 
 
 # ---------------------------------------------------------------------------
@@ -355,7 +361,7 @@ class TestProfiles:
                 "model_ids": ["nvidia/nemotron-4-340b-instruct"],
             },
         )
-        assert resp.status_code == 200
+        assert resp.status_code == 201
         data = resp.json()
         assert data["status"] == "created"
         assert data["name"] == "test-profile"
