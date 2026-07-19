@@ -14,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from app.config_manager import get_config
+from app.exporters import ExporterError, get_exporter
 from app.launcher import LiteLLMManager
 from app.storage import get_storage
 from app.utils import NIMPilotError, get_env, get_logger, setup_logging, timestamp
@@ -91,6 +92,15 @@ class ProfileRequest(BaseModel):
     description: str | None = None
     preferred_metrics: list[str] | None = None
     model_ids: list[str] | None = None
+
+
+class ExportRequest(BaseModel):
+    """Export 실행 요청 (Task 011)."""
+
+    profile: str | None = None
+    output_path: str | None = None
+    limit: int = 10
+    use_litellm_proxy: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -681,3 +691,57 @@ async def api_litellm_reload() -> dict:
     """LiteLLM Config를 리로드한다."""
     manager = LiteLLMManager(config=config, storage=_storage)
     return manager.reload()
+
+
+# ---------------------------------------------------------------------------
+# Exporters (Task 011)
+# ---------------------------------------------------------------------------
+
+
+@app.get("/exporters")
+async def list_exporters() -> dict[str, Any]:
+    """지원하는 Export 포맷 목록을 반환한다.
+
+    Returns:
+        지원 포맷 목록 딕셔너리.
+    """
+    exporter = get_exporter()
+    return {"formats": exporter.list_formats()}
+
+
+@app.post("/exporters/{fmt}")
+async def run_export(
+    fmt: str, req: ExportRequest | None = None
+) -> dict[str, Any]:
+    """지정한 포맷으로 모델 설정을 Export 한다.
+
+    Args:
+        fmt: Export 포맷 (cline, continue, openwebui, aider, json, yaml).
+        req: Export 요청 옵션. 생략 시 기본값 사용.
+    """
+    # req가 None인 경우 기본값 사용 (Pydantic 기본 인스턴스)
+    if req is None:
+        req = ExportRequest()
+
+    exporter = get_exporter()
+    try:
+        result = exporter.export(
+            fmt=fmt,
+            profile=req.profile,
+            output_path=req.output_path,
+            limit=req.limit,
+            use_litellm_proxy=req.use_litellm_proxy,
+        )
+    except ExporterError as e:
+        status_code = 400 if e.code == "BAD_REQUEST" else 500
+        raise HTTPException(
+            status_code=status_code,
+            detail={
+                "error": {
+                    "code": e.code,
+                    "message": e.message,
+                    "details": {},
+                }
+            },
+        )
+    return result

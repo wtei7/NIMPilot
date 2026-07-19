@@ -115,20 +115,43 @@ def client(mock_storage):
     # 매번 app.main을 reload하여 최신 코드를 사용
     import importlib
 
+    import app.exporters
     import app.main
     import app.profile
 
     importlib.reload(app.main)
-    # ProfileService 싱글톤 리셋 (이전 테스트 상태 유지 방지)
+    # ProfileService / Exporter 싱글톤 리셋 (이전 테스트 상태 유지 방지)
     app.profile._profile_service = None
+    app.exporters._exporter = None
+
+    # Exporter가 mock_storage를 사용하도록 미리 구성
+    from app.exporters import Exporter
+    from app.profile import ProfileService
+    from app.ranking import RankingEngine
+
+    profile_service = ProfileService(storage=mock_storage)
+    ranking_engine = RankingEngine(
+        storage=mock_storage, profile_service=profile_service
+    )
+    test_exporter = Exporter(
+        storage=mock_storage,
+        profile_service=profile_service,
+        ranking_engine=ranking_engine,
+    )
+
     with patch("app.main._storage", mock_storage), patch(
         "app.profile.get_storage", return_value=mock_storage
+    ), patch(
+        "app.exporters.get_storage", return_value=mock_storage
+    ), patch(
+        "app.main.get_exporter", return_value=test_exporter
     ):
         with TestClient(app.main.app) as c:
             yield c
     # 테스트 후 원래 상태로 복원
     importlib.reload(app.main)
     app.profile._profile_service = None
+    app.exporters._exporter = None
 
 
 # ---------------------------------------------------------------------------
@@ -461,3 +484,125 @@ class TestDashboard:
         resp = client.get("/")
         assert resp.status_code == 200
         assert "text/html" in resp.headers.get("content-type", "")
+
+
+# ---------------------------------------------------------------------------
+# Exporters tests (Task 011)
+# ---------------------------------------------------------------------------
+
+
+class TestExportersAPI:
+    """Exporters endpoint tests (Task 011)."""
+
+    def test_list_exporters(self, client):
+        """GET /exporters returns supported formats."""
+        resp = client.get("/exporters")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "formats" in data
+        names = [f["name"] for f in data["formats"]]
+        # 지원해야 하는 포맷들
+        for expected in ("cline", "continue", "openwebui", "aider", "json", "yaml"):
+            assert expected in names
+
+    def test_export_json(self, client, tmp_path):
+        """POST /exporters/json exports models to JSON."""
+        output_path = str(tmp_path / "test-export.json")
+        resp = client.post(
+            "/exporters/json",
+            json={"limit": 5, "output_path": output_path},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "exported"
+        assert data["format"] == "json"
+        assert data["model_count"] > 0
+        assert data["file"] == output_path
+
+    def test_export_yaml(self, client, tmp_path):
+        """POST /exporters/yaml exports models to YAML."""
+        output_path = str(tmp_path / "test-export.yaml")
+        resp = client.post(
+            "/exporters/yaml",
+            json={"limit": 3, "output_path": output_path},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["format"] == "yaml"
+
+    def test_export_cline(self, client, tmp_path):
+        """POST /exporters/cline exports to Cline format."""
+        output_path = str(tmp_path / "cline.json")
+        resp = client.post(
+            "/exporters/cline",
+            json={"limit": 5, "output_path": output_path},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["format"] == "cline"
+
+    def test_export_continue(self, client, tmp_path):
+        """POST /exporters/continue exports to Continue format."""
+        output_path = str(tmp_path / "continue.json")
+        resp = client.post(
+            "/exporters/continue",
+            json={"limit": 5, "output_path": output_path},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["format"] == "continue"
+
+    def test_export_openwebui(self, client, tmp_path):
+        """POST /exporters/openwebui exports to OpenWebUI format."""
+        output_path = str(tmp_path / "openwebui.json")
+        resp = client.post(
+            "/exporters/openwebui",
+            json={"limit": 5, "output_path": output_path},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["format"] == "openwebui"
+
+    def test_export_aider(self, client, tmp_path):
+        """POST /exporters/aider exports to Aider format."""
+        output_path = str(tmp_path / "aider.yml")
+        resp = client.post(
+            "/exporters/aider",
+            json={"limit": 5, "output_path": output_path},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["format"] == "aider"
+
+    def test_export_with_profile(self, client, tmp_path):
+        """POST /exporters/json with profile uses profile-based ranking."""
+        output_path = str(tmp_path / "profile-export.json")
+        resp = client.post(
+            "/exporters/json",
+            json={"profile": "coding", "limit": 3, "output_path": output_path},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["profile"] == "coding"
+
+    def test_export_with_litellm_proxy(self, client, tmp_path):
+        """POST /exporters with use_litellm_proxy flag."""
+        output_path = str(tmp_path / "proxy-export.json")
+        resp = client.post(
+            "/exporters/continue",
+            json={
+                "limit": 2,
+                "output_path": output_path,
+                "use_litellm_proxy": True,
+            },
+        )
+        assert resp.status_code == 200
+
+    def test_export_invalid_format(self, client):
+        """POST /exporters/invalid-format returns 400."""
+        resp = client.post("/exporters/invalid-format", json={})
+        assert resp.status_code == 400
+        data = resp.json()
+        assert "지원하지 않는 포맷" in str(data)
+
+    def test_export_no_request_body(self, client):
+        """POST /exporters/json without body uses defaults."""
+        resp = client.post("/exporters/json")
+        assert resp.status_code == 200
