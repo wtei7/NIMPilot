@@ -13,6 +13,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from app import __version__
 from app.config_manager import get_config
 from app.exporters import ExporterError, get_exporter
 from app.launcher import LiteLLMManager
@@ -33,7 +34,7 @@ _storage = get_storage()
 app = FastAPI(
     title="NIMPilot",
     description="NVIDIA NIM 모델 자동 탐색 및 최적화 도구",
-    version="0.1.0",
+    version=__version__,
 )
 
 # 정적 파일 (Dashboard) 마운트
@@ -123,7 +124,7 @@ async def health() -> dict[str, str]:
 
     Docker healthcheck에서 사용한다.
     """
-    return {"status": "healthy", "version": "0.1.0"}
+    return {"status": "healthy", "version": __version__}
 
 
 @app.get("/status")

@@ -13,8 +13,10 @@ logs/
 *.log
 
 # Cache (runtime data, not source)
-# cache/ entries are committed as they contain initial stub data
-cache/*.tmp
+cache/
+exports/
+*.bak
+*.tmp
 
 # IDE
 .vscode/

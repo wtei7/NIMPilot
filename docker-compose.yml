@@ -7,6 +7,7 @@ services:
       - ./config:/app/config
       - ./cache:/app/cache
       - ./logs:/app/logs
+      - ./exports:/app/exports
     env_file:
       - .env
     depends_on:
@@ -19,7 +20,7 @@ services:
     restart: unless-stopped
 
   litellm:
-    image: ghcr.io/berriai/litellm:main-latest
+    image: ghcr.io/berriai/litellm:main-v1.75.3
     ports:
       - "4000:4000"
     volumes:

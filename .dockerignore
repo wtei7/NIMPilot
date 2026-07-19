@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# Docker
+Dockerfile
+docker-compose.override.yml
+
+# Test & Dev
+tests/
+*.bak
+*.tmp
+
+# Logs
+logs/
+*.log
+
+# Cache (runtime data)
+cache/
+exports/
+
+# Config (템플릿 제외한 런타임)
+config/generated.yaml
+config/favorites.yaml
+
+# Environment
+.env
+.env.*
+
+# IDE / OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Documentation
+docs/
+CHANGELOG.md
+AGENTS.md
