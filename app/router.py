@@ -4,7 +4,9 @@
 지원 모드: Auto, Manual, Profile, Rule, Fallback.
 """
 
-from typing import Any
+from typing import Any, Literal
+
+from pydantic import BaseModel, Field, ValidationError
 
 from app.config_manager import AppConfig, get_config
 from app.profile import ProfileService, get_profile_service
@@ -20,6 +22,17 @@ logger = get_logger("router")
 # ---------------------------------------------------------------------------
 
 VALID_MODES = {"auto", "manual", "profile", "rule", "fallback"}
+
+
+class RouterConfigData(BaseModel):
+    """저장되는 라우터 설정의 검증 스키마."""
+
+    version: int = 1
+    mode: Literal["auto", "manual", "profile", "rule", "fallback"] = "auto"
+    fallback_model: str = ""
+    manual_model: str = ""
+    profile: str = "general"
+    rules: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class Router:
@@ -54,6 +67,7 @@ class Router:
         self._manual_model: str = ""
         self._profile: str = "general"
         self._rules: list[dict[str, Any]] = []
+        self._model_index: dict[str, dict[str, Any]] | None = None
 
         # 저장된 라우터 설정 로드
         self._load_config()
@@ -74,11 +88,16 @@ class Router:
         if not data:
             return
 
-        self._mode = data.get("mode", "auto")
-        self._fallback_model = data.get("fallback_model", "")
-        self._manual_model = data.get("manual_model", "")
-        self._profile = data.get("profile", "general")
-        self._rules = data.get("rules", [])
+        try:
+            saved = RouterConfigData.model_validate(data)
+        except ValidationError as exc:
+            logger.warning("유효하지 않은 라우터 설정을 무시합니다: %s", exc)
+            return
+        self._mode = saved.mode
+        self._fallback_model = saved.fallback_model
+        self._manual_model = saved.manual_model
+        self._profile = saved.profile
+        self._rules = saved.rules
 
     def save_config(self) -> dict[str, Any]:
         """현재 라우터 설정을 저장소에 저장한다.
@@ -86,15 +105,14 @@ class Router:
         Returns:
             저장된 라우터 설정 딕셔너리.
         """
-        config_data: dict[str, Any] = {
-            "version": 1,
-            "mode": self._mode,
-            "fallback_model": self._fallback_model,
-            "manual_model": self._manual_model,
-            "profile": self._profile,
-            "rules": self._rules,
-            "updated_at": timestamp(),
-        }
+        config_data: dict[str, Any] = RouterConfigData(
+            mode=self._mode,
+            fallback_model=self._fallback_model,
+            manual_model=self._manual_model,
+            profile=self._profile,
+            rules=self._rules,
+        ).model_dump()
+        config_data["updated_at"] = timestamp()
         self.storage.save("router", config_data)
         logger.info("라우터 설정 저장 (mode=%s)", self._mode)
         return config_data
@@ -464,14 +482,16 @@ class Router:
         Returns:
             모델 정보 딕셔너리. 없으면 None.
         """
-        data = self.storage.load("models")
-        if not data:
-            return None
-
-        for model in data.get("models", []):
-            if model.get("id") == model_id or model.get("alias") == model_id:
-                return model
-        return None
+        if self._model_index is None:
+            data = self.storage.load("models")
+            models = data.get("models", []) if data else []
+            self._model_index = {
+                identifier: model
+                for model in models
+                for identifier in (model.get("id"), model.get("alias"))
+                if identifier
+            }
+        return self._model_index.get(model_id)
 
     def get_config(self) -> dict[str, Any]:
         """현재 라우터 설정을 반환한다.
