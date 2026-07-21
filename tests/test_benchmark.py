@@ -602,6 +602,18 @@ class TestSaveRankings:
 
         assert len(result["rankings"]) == 2
 
+    def test_save_selects_lowest_ttft_as_fastest(self, mock_storage):
+        """Fastest model is selected by TTFT, not the overall score."""
+        engine = RankingEngine(storage=mock_storage)
+        rankings = [
+            {"model_id": "high-score", "score": 0.9, "ttft": 0.20},
+            {"model_id": "low-ttft", "score": 0.8, "ttft": 0.05},
+        ]
+
+        result = engine.save_rankings(rankings)
+
+        assert result["fastest"]["model_id"] == "low-ttft"
+
     def test_save_empty_rankings(self, mock_storage):
         """Empty rankings are saved."""
         mock_storage.load.return_value = {}
