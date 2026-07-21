@@ -263,7 +263,7 @@ class TestGenerateConfig:
         assert "litellm_settings" in config
         assert "general_settings" in config
         assert config["litellm_settings"]["drop_params"] is True
-        assert config["general_settings"]["master_key"] == "sk-nimpilot"
+        assert config["general_settings"]["master_key"] == "os.environ/LITELLM_MASTER_KEY"
 
     def test_generate_config_model_count(self, generator: ConfigGenerator) -> None:
         """모델 수만큼 model_list 엔트리가 생성된다."""

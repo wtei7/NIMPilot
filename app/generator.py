@@ -34,6 +34,7 @@ logger = get_logger("generator")
 DEFAULT_OUTPUT_PATH = "config/generated.yaml"
 NVIDIA_API_BASE = "https://integrate.api.nvidia.com/v1"
 API_KEY_PLACEHOLDER = "os.environ/NVIDIA_API_KEY"
+LITELLM_MASTER_KEY_PLACEHOLDER = "os.environ/LITELLM_MASTER_KEY"
 
 # 모델 필터링: 제외할 모델 ID 패턴 (예: embedding 모델은 채팅 불가)
 EXCLUDE_PATTERNS: list[str] = [
@@ -207,7 +208,7 @@ class ConfigGenerator:
                 "drop_params": True,
             },
             "general_settings": {
-                "master_key": "sk-nimpilot",
+                "master_key": LITELLM_MASTER_KEY_PLACEHOLDER,
             },
         }
 
