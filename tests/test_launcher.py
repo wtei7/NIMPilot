@@ -157,11 +157,11 @@ class TestGetLiteLLMUrl:
 
     def test_get_url_custom_port(self, storage):
         """커스텀 포트로 URL을 생성한다."""
-        custom_config = AppConfig(
-            litellm=LiteLLMConfig(port=5555),
-        )
+        custom_config = AppConfig(litellm=LiteLLMConfig(
+            port=5555, url="http://litellm:5555"
+        ))
         mgr = LiteLLMManager(config=custom_config, storage=storage)
-        assert mgr._get_litellm_url() == "http://localhost:5555"
+        assert mgr._get_litellm_url() == "http://litellm:5555"
 
 
 # ---------------------------------------------------------------------------

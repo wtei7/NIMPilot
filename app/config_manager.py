@@ -39,6 +39,7 @@ class LiteLLMConfig(BaseModel):
     """LiteLLM 실행 설정."""
 
     port: int = 4000
+    url: str = "http://localhost:4000"
     config_path: str = "config/generated.yaml"
     log_path: str = "logs/litellm.log"
 
@@ -149,6 +150,10 @@ def _apply_env_overrides(config: AppConfig) -> AppConfig:
     litellm_port_str = get_env("LITELLM_PORT", "")
     if litellm_port_str:
         config.litellm.port = int(litellm_port_str)
+
+    litellm_url = get_env("LITELLM_URL", "")
+    if litellm_url:
+        config.litellm.url = litellm_url.rstrip("/")
 
     return config
 

@@ -11,7 +11,9 @@ Docker Compose를 통해 LiteLLM 컨테이너를 start/stop/restart/reload하고
     - status:  LiteLLM 컨테이너 상태 + Health 체크
 """
 
+import json
 import subprocess
+import time
 from typing import Any
 
 import httpx
@@ -34,6 +36,7 @@ HEALTH_TIMEOUT = 5.0
 RELOAD_TIMEOUT = 10.0
 START_TIMEOUT = 60  # 초
 STOP_TIMEOUT = 30  # 초
+STATUS_CACHE_TTL = 5.0  # 초
 
 
 # ---------------------------------------------------------------------------
@@ -71,6 +74,8 @@ class LiteLLMManager:
         self.compose_file = DOCKER_COMPOSE_FILE
         self.service_name = LITELLM_SERVICE
         self.litellm_port = self.config.litellm.port
+        self._status_cache: dict[str, Any] | None = None
+        self._status_cache_time = 0.0
 
     # -----------------------------------------------------------------------
     # Private: docker compose 헬퍼
@@ -131,9 +136,14 @@ class LiteLLMManager:
         """LiteLLM 서비스의 기본 URL을 반환한다.
 
         Returns:
-            LiteLLM 서비스 URL (예: http://localhost:4000).
+            LiteLLM 서비스 URL.
         """
-        return f"http://localhost:{self.litellm_port}"
+        return self.config.litellm.url.rstrip("/")
+
+    def _invalidate_status_cache(self) -> None:
+        """저장된 LiteLLM 상태 캐시를 무효화한다."""
+        self._status_cache = None
+        self._status_cache_time = 0.0
 
     def _update_metadata(
         self, status: str, pid: int | None = None
@@ -186,6 +196,7 @@ class LiteLLMManager:
         self._run_compose(
             ["up", "-d", self.service_name], timeout=START_TIMEOUT
         )
+        self._invalidate_status_cache()
         self._update_metadata("running")
         logger.info("LiteLLM 시작 완료")
 
@@ -205,6 +216,7 @@ class LiteLLMManager:
         self._run_compose(
             ["stop", self.service_name], timeout=STOP_TIMEOUT
         )
+        self._invalidate_status_cache()
         self._update_metadata("stopped")
         logger.info("LiteLLM 중지 완료")
 
@@ -224,6 +236,7 @@ class LiteLLMManager:
         self._run_compose(
             ["restart", self.service_name], timeout=START_TIMEOUT
         )
+        self._invalidate_status_cache()
         self._update_metadata("running")
         logger.info("LiteLLM 재시작 완료")
 
@@ -273,7 +286,14 @@ class LiteLLMManager:
                 - health: "healthy" | "unhealthy" | "unknown"
                 - port: LiteLLM 포트 번호
         """
-        result = {
+        now = time.monotonic()
+        if (
+            self._status_cache is not None
+            and now - self._status_cache_time < STATUS_CACHE_TTL
+        ):
+            return dict(self._status_cache)
+
+        result: dict[str, Any] = {
             "container_status": "unknown",
             "health": "unknown",
             "port": self.litellm_port,
@@ -290,8 +310,6 @@ class LiteLLMManager:
                 lines = output.splitlines()
                 for line in lines:
                     if line.strip():
-                        import json
-
                         container = json.loads(line)
                         state = container.get("State", "")
                         if state == "running":
@@ -315,4 +333,6 @@ class LiteLLMManager:
             except httpx.HTTPError:
                 result["health"] = "unhealthy"
 
+        self._status_cache = dict(result)
+        self._status_cache_time = now
         return result
