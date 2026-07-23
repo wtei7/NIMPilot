@@ -57,6 +57,23 @@
     <!-- Model Table Section -->
     <section id="model-table-section">
         <h2>Model Table</h2>
+        <div class="model-toolbar">
+            <label class="model-search" for="model-search">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="11" cy="11" r="6"></circle>
+                    <path d="m16 16 4 4"></path>
+                </svg>
+                <input
+                    id="model-search"
+                    type="search"
+                    placeholder="Search models"
+                    autocomplete="off"
+                >
+            </label>
+            <span class="model-search-count" id="model-search-count">
+                Loading models...
+            </span>
+        </div>
         <div class="table-container">
             <table id="model-table">
                 <thead>

@@ -14,6 +14,7 @@ const POLL_INTERVAL_MS = 5000;
 let modelsCache = [];
 let benchmarksCache = [];
 let pollTimer = null;
+const expandedProviders = new Set();
 
 // ---------------------------------------------------------------------------
 // 유틸
@@ -129,6 +130,12 @@ function setText(id, value) {
 function safe(v, fallback = "-") {
     if (v === null || v === undefined || v === "") return fallback;
     return v;
+}
+
+function escapeHtml(value) {
+    const span = document.createElement("span");
+    span.textContent = String(value);
+    return span.innerHTML;
 }
 
 // ---------------------------------------------------------------------------
@@ -250,37 +257,142 @@ async function loadModels() {
         const data = await apiFetch("/api/models");
         const models = (data && data.models) || [];
         modelsCache = models;
-
-        const tbody = document.getElementById("model-table-body");
-        if (!tbody) return;
-
-        if (models.length === 0) {
-            tbody.innerHTML =
-                '<tr><td colspan="5" class="loading">No models found</td></tr>';
-            return;
-        }
-
-        tbody.innerHTML = models
-            .map((m) => {
-                const id = safe(m.id);
-                const alias = safe(m.alias);
-                const ctx = safe(m.context_length);
-                const caps = Array.isArray(m.capabilities)
-                    ? m.capabilities.join(", ")
-                    : safe(m.capabilities);
-                const status = safe(m.status);
-                return `<tr>
-                    <td>${id}</td>
-                    <td>${alias}</td>
-                    <td>${ctx}</td>
-                    <td>${caps}</td>
-                    <td>${status}</td>
-                </tr>`;
-            })
-            .join("");
+        renderModelTable();
     } catch (e) {
         log("error", "models load failed: " + e.message);
     }
+}
+
+function getModelProvider(model) {
+    const id = String(safe(model.id, "Other"));
+    const separatorIndex = id.indexOf("/");
+    return separatorIndex > 0 ? id.slice(0, separatorIndex) : "Other";
+}
+
+function getModelSearchText(model) {
+    const capabilities = Array.isArray(model.capabilities)
+        ? model.capabilities.join(" ")
+        : safe(model.capabilities, "");
+    return [
+        model.id,
+        model.name,
+        model.alias,
+        capabilities,
+        model.status,
+        getModelProvider(model),
+    ]
+        .map((value) => String(safe(value, "")).toLowerCase())
+        .join(" ");
+}
+
+function renderModelTable() {
+    const tbody = document.getElementById("model-table-body");
+    const search = document.getElementById("model-search");
+    const count = document.getElementById("model-search-count");
+    const table = document.getElementById("model-table");
+    if (!tbody || !search || !count || !table) return;
+
+    const columnCount = table.querySelectorAll("thead th").length;
+    const query = search.value.trim().toLowerCase();
+    const filteredModels = query
+        ? modelsCache.filter((model) =>
+              getModelSearchText(model).includes(query)
+          )
+        : modelsCache;
+
+    count.textContent = query
+        ? `${filteredModels.length} of ${modelsCache.length} models`
+        : `${modelsCache.length} models`;
+
+    if (filteredModels.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="${columnCount}" class="loading">
+            ${modelsCache.length === 0 ? "No models found" : "No matching models"}
+        </td></tr>`;
+        return;
+    }
+
+    const groupedModels = new Map();
+    filteredModels.forEach((model) => {
+        const provider = getModelProvider(model);
+        if (!groupedModels.has(provider)) groupedModels.set(provider, []);
+        groupedModels.get(provider).push(model);
+    });
+
+    tbody.innerHTML = Array.from(groupedModels.entries())
+        .sort(([providerA], [providerB]) =>
+            providerA.localeCompare(providerB)
+        )
+        .map(([provider, models]) =>
+            renderModelGroup(provider, models, columnCount, Boolean(query))
+        )
+        .join("");
+}
+
+function renderModelGroup(provider, models, columnCount, forceExpanded) {
+    const isExpanded = forceExpanded || expandedProviders.has(provider);
+    const encodedProvider = encodeURIComponent(provider);
+    const groupHeader = `<tr class="model-group-row">
+        <td colspan="${columnCount}">
+            <button
+                class="model-group-toggle"
+                type="button"
+                data-provider="${escapeHtml(provider)}"
+                aria-expanded="${isExpanded}"
+                aria-controls="provider-${encodedProvider}"
+            >
+                <span class="model-group-chevron" aria-hidden="true">›</span>
+                <span class="model-group-name">${escapeHtml(provider)}</span>
+                <span class="model-group-count">${models.length}</span>
+            </button>
+        </td>
+    </tr>`;
+
+    if (!isExpanded) return groupHeader;
+
+    const modelRows = models
+        .map((model, index) => {
+            const capabilities = Array.isArray(model.capabilities)
+                ? model.capabilities.join(", ")
+                : safe(model.capabilities);
+            const modelContextCell = columnCount >= 5
+                ? `<td data-label="Context">${escapeHtml(
+                      safe(model.context_length)
+                  )}</td>`
+                : "";
+            const rowId = index === 0
+                ? ` id="provider-${encodedProvider}"`
+                : "";
+            return `<tr class="model-row"${rowId}>
+                <td data-label="Model ID">${escapeHtml(safe(model.id))}</td>
+                <td data-label="Alias">${escapeHtml(safe(model.alias))}</td>
+                ${modelContextCell}
+                <td data-label="Capabilities">${escapeHtml(capabilities)}</td>
+                <td data-label="Status">${escapeHtml(safe(model.status))}</td>
+            </tr>`;
+        })
+        .join("");
+
+    return groupHeader + modelRows;
+}
+
+function setupModelSearch() {
+    const search = document.getElementById("model-search");
+    const tbody = document.getElementById("model-table-body");
+    if (!search || !tbody) return;
+
+    search.addEventListener("input", renderModelTable);
+    tbody.addEventListener("click", (event) => {
+        const toggle = event.target.closest(".model-group-toggle");
+        if (!toggle || search.value.trim()) return;
+
+        const provider = toggle.dataset.provider;
+        if (expandedProviders.has(provider)) {
+            expandedProviders.delete(provider);
+        } else {
+            expandedProviders.add(provider);
+        }
+        renderModelTable();
+    });
 }
 
 async function loadBenchmarks() {
@@ -400,6 +512,7 @@ function startPolling() {
 
 document.addEventListener("DOMContentLoaded", () => {
     setupLogWidget();
+    setupModelSearch();
     log("info", "Dashboard initialized");
     pollOnce();
     startPolling();

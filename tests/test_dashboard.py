@@ -118,6 +118,19 @@ class TestDashboard:
         assert "setupLogWidget" in script.text
         assert ".log-widget" in style.text
 
+    def test_dashboard_contains_collapsed_searchable_model_groups(self, client):
+        """모델 표가 검색과 기본 접힘 그룹을 제공한다."""
+        page = client.get("/")
+        script = client.get("/static/app.js")
+        style = client.get("/static/style.css")
+        assert 'id="model-search"' in page.text
+        assert 'id="model-search-count"' in page.text
+        assert "const expandedProviders = new Set()" in script.text
+        assert "setupModelSearch" in script.text
+        assert "renderModelGroup" in script.text
+        assert ".model-group-toggle" in style.text
+        assert "provider-logo" not in page.text
+
 
 # ---------------------------------------------------------------------------
 # GET /api/overview
