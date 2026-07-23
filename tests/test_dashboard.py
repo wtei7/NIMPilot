@@ -131,6 +131,12 @@ class TestDashboard:
         assert ".model-group-toggle" in style.text
         assert "provider-logo" not in page.text
 
+    def test_dashboard_charts_are_responsive(self, client):
+        """고정 크기 캔버스가 모바일 화면을 가로로 넘기지 않는다."""
+        style = client.get("/static/style.css")
+        assert ".chart-box canvas" in style.text
+        assert "width: 100%" in style.text
+
 
 # ---------------------------------------------------------------------------
 # GET /api/overview

@@ -268,6 +268,8 @@ tbody tr:hover {
 }
 
 .chart-box {
+    min-width: 0;
+    flex: 1 1 480px;
     background: var(--card-bg);
     border-radius: var(--radius);
     padding: 1rem;
@@ -277,6 +279,12 @@ tbody tr:hover {
 .chart-box h3 {
     font-size: 1rem;
     margin-bottom: 0.5rem;
+}
+
+.chart-box canvas {
+    display: block;
+    width: 100%;
+    height: auto;
 }
 
 /* Logs */
