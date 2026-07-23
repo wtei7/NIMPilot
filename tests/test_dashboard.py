@@ -137,6 +137,16 @@ class TestDashboard:
         assert ".chart-box canvas" in style.text
         assert "width: 100%" in style.text
 
+    def test_dashboard_static_assets_bypass_stale_browser_cache(self, client):
+        """Dashboard 자산은 버전 URL과 재검증 헤더를 사용한다."""
+        page = client.get("/")
+        style = client.get("/static/style.css?v=20260723-1")
+        script = client.get("/static/app.js?v=20260723-1")
+        assert 'href="/static/style.css?v=20260723-1"' in page.text
+        assert 'src="/static/app.js?v=20260723-1"' in page.text
+        assert style.headers["cache-control"] == "no-cache, must-revalidate"
+        assert script.headers["cache-control"] == "no-cache, must-revalidate"
+
 
 # ---------------------------------------------------------------------------
 # GET /api/overview

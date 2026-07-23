@@ -12,6 +12,7 @@ from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from starlette.types import Scope
 
 from app import __version__
 from app.config_manager import get_config
@@ -37,9 +38,20 @@ app = FastAPI(
     version=__version__,
 )
 
+
+class DashboardStaticFiles(StaticFiles):
+    """브라우저가 Dashboard 정적 파일을 매번 재검증하게 한다."""
+
+    async def get_response(self, path: str, scope: Scope) -> Response:
+        """정적 파일 응답에 캐시 재검증 헤더를 추가한다."""
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-cache, must-revalidate"
+        return response
+
+
 # 정적 파일 (Dashboard) 마운트
 if os.path.isdir("web"):
-    app.mount("/static", StaticFiles(directory="web"), name="static")
+    app.mount("/static", DashboardStaticFiles(directory="web"), name="static")
 
 
 # ---------------------------------------------------------------------------
