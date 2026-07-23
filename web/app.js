@@ -66,6 +66,40 @@ function log(level, message) {
     }
 }
 
+function setLogWidgetOpen(isOpen) {
+    const panel = document.getElementById("logs-panel");
+    const launcher = document.getElementById("logs-launcher");
+    if (!panel || !launcher) return;
+
+    panel.hidden = !isOpen;
+    launcher.setAttribute("aria-expanded", String(isOpen));
+    launcher.setAttribute(
+        "aria-label",
+        isOpen ? "Close activity log" : "Open activity log"
+    );
+}
+
+function setupLogWidget() {
+    const panel = document.getElementById("logs-panel");
+    const launcher = document.getElementById("logs-launcher");
+    const closeButton = document.getElementById("logs-close");
+    if (!panel || !launcher || !closeButton) return;
+
+    launcher.addEventListener("click", () => {
+        setLogWidgetOpen(panel.hidden);
+    });
+    closeButton.addEventListener("click", () => {
+        setLogWidgetOpen(false);
+        launcher.focus();
+    });
+    document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && !panel.hidden) {
+            setLogWidgetOpen(false);
+            launcher.focus();
+        }
+    });
+}
+
 async function withButton(buttonId, fn, successMsg) {
     const btn = document.getElementById(buttonId);
     const original = btn ? btn.textContent : "";
@@ -365,6 +399,7 @@ function startPolling() {
 // ---------------------------------------------------------------------------
 
 document.addEventListener("DOMContentLoaded", () => {
+    setupLogWidget();
     log("info", "Dashboard initialized");
     pollOnce();
     startPolling();

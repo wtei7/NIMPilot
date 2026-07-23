@@ -167,26 +167,119 @@ tbody tr:hover {
 }
 
 /* Logs */
-.logs-container {
-    background: var(--card-bg);
-    border-radius: var(--radius);
-    padding: 1rem;
-    max-height: 300px;
-    overflow-y: auto;
-    border: 1px solid var(--border);
+.log-widget {
+    position: fixed;
+    right: 24px;
+    bottom: 24px;
+    z-index: 1000;
+    display: flex;
+    align-items: flex-end;
+    flex-direction: column;
+    gap: 12px;
+    pointer-events: none;
 }
 
-.logs-container p {
+.log-panel {
+    width: min(400px, calc(100vw - 32px));
+    max-height: min(440px, calc(100vh - 104px));
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: var(--card-bg);
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.5);
+    pointer-events: auto;
+}
+
+.log-panel[hidden] {
+    display: none;
+}
+
+.log-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+}
+
+.log-panel-header h2 {
+    margin: 0;
+    font-size: 0.95rem;
+}
+
+.log-panel-header p {
+    margin-top: 2px;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+}
+
+.log-close {
+    display: grid;
+    width: 32px;
+    height: 32px;
+    flex: 0 0 auto;
+    padding: 0;
+    place-items: center;
+    border-radius: 50%;
+}
+
+.log-close svg,
+.log-launcher svg {
+    width: 20px;
+    height: 20px;
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.8;
+}
+
+.log-launcher {
+    display: grid;
+    width: 56px;
+    height: 56px;
+    padding: 0;
+    place-items: center;
+    border: 1px solid var(--accent);
+    border-radius: 50%;
+    background: var(--accent);
+    color: #0f1117;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+    pointer-events: auto;
+}
+
+.log-launcher:hover {
+    border-color: #8bd10a;
+    background: #8bd10a;
+    color: #0f1117;
+    transform: translateY(-2px);
+}
+
+.log-launcher[aria-expanded="true"] {
+    background: var(--card-bg);
+    color: var(--accent);
+}
+
+.logs-container {
+    min-height: 120px;
+    max-height: min(340px, calc(100vh - 180px));
+    padding: 12px 16px;
+    overflow-y: auto;
+}
+
+.logs-container p,
+.logs-container .log-entry {
     font-family: monospace;
     font-size: 0.85rem;
     color: var(--text-muted);
     margin-bottom: 0.25rem;
+    overflow-wrap: anywhere;
 }
 
-.logs-container .log-entry .timestamp { color: var(--text-muted); }
-.logs-container .log-entry .level-info { color: var(--accent); }
-.logs-container .log-entry .level-warn { color: var(--warning); }
-.logs-container .log-entry .level-error { color: var(--danger); }
+.logs-container .log-info { color: var(--accent); }
+.logs-container .log-warn { color: var(--warning); }
+.logs-container .log-error { color: var(--danger); }
 
 .log-empty {
     font-style: italic;
@@ -209,5 +302,10 @@ footer a {
 @media (max-width: 768px) {
     .cards {
         grid-template-columns: 1fr;
+    }
+
+    .log-widget {
+        right: 12px;
+        bottom: 12px;
     }
 }

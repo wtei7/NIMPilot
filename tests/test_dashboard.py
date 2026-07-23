@@ -107,6 +107,17 @@ class TestDashboard:
         assert "NIMPilot" in res.text
         assert "Overview" in res.text
 
+    def test_dashboard_contains_chat_style_log_widget(self, client):
+        """Dashboard가 닫힌 상태의 플로팅 로그 위젯을 포함한다."""
+        page = client.get("/")
+        script = client.get("/static/app.js")
+        style = client.get("/static/style.css")
+        assert 'id="logs-panel"' in page.text
+        assert 'id="logs-launcher"' in page.text
+        assert 'aria-expanded="false"' in page.text
+        assert "setupLogWidget" in script.text
+        assert ".log-widget" in style.text
+
 
 # ---------------------------------------------------------------------------
 # GET /api/overview

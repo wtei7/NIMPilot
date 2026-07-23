@@ -90,13 +90,52 @@
         </div>
     </section>
 
-    <!-- Logs Section -->
-    <section id="logs">
-        <h2>Logs</h2>
-        <div class="logs-container" id="logs-container">
-            <p class="log-empty">No logs yet.</p>
-        </div>
-    </section>
+    <!-- Floating Log Widget -->
+    <div class="log-widget">
+        <section
+            class="log-panel"
+            id="logs-panel"
+            aria-labelledby="logs-title"
+            hidden
+        >
+            <div class="log-panel-header">
+                <div>
+                    <h2 id="logs-title">Activity log</h2>
+                    <p>Dashboard events</p>
+                </div>
+                <button
+                    class="log-close"
+                    id="logs-close"
+                    type="button"
+                    aria-label="Close activity log"
+                >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="m7 7 10 10M17 7 7 17"></path>
+                    </svg>
+                </button>
+            </div>
+            <div
+                class="logs-container"
+                id="logs-container"
+                aria-live="polite"
+            >
+                <p class="log-empty">No logs yet.</p>
+            </div>
+        </section>
+        <button
+            class="log-launcher"
+            id="logs-launcher"
+            type="button"
+            aria-controls="logs-panel"
+            aria-expanded="false"
+            aria-label="Open activity log"
+        >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M5 5h14v11H9l-4 4V5Z"></path>
+                <path d="M8 9h8M8 12h5"></path>
+            </svg>
+        </button>
+    </div>
 
     <footer>
         <p>NIMPilot v0.1.0 &middot; <a href="/docs">API Docs</a></p>
