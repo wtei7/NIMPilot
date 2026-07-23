@@ -8,19 +8,22 @@ services:
       - ./cache:/app/cache
       - ./logs:/app/logs
       - ./exports:/app/exports
+      - ./web:/app/web
+      - /var/run/docker.sock:/var/run/docker.sock
     env_file:
       - .env
     depends_on:
       - litellm
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test:
+        ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
     restart: unless-stopped
 
   litellm:
-    image: ghcr.io/berriai/litellm:main-v1.75.3
+    image: ghcr.io/berriai/litellm:v1.92.0
     ports:
       - "4000:4000"
     volumes:
