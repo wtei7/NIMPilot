@@ -62,8 +62,14 @@ class BenchmarkRunner:
             self.test_tokens,
         )
 
-    async def run(self) -> dict[str, Any]:
-        """전체 벤치마크를 실행한다.
+    async def run(
+        self,
+        model_ids: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """전체 또는 선택한 모델의 벤치마크를 실행한다.
+
+        Args:
+            model_ids: 측정할 모델 ID 목록. None 또는 빈 목록이면 전체 모델.
 
         Returns:
             벤치마크 결과 딕셔너리. benchmark.json에 저장된다.
@@ -75,13 +81,21 @@ class BenchmarkRunner:
         if not models:
             raise BenchmarkError("측정할 모델이 없습니다. 먼저 모델을 탐색하세요.")
 
-        available_models = [m for m in models if m.get("status") == "available"]
-        if not available_models:
-            available_models = models
+        if model_ids:
+            requested_ids = set(model_ids)
+            models = [
+                model
+                for model in models
+                if model.get("id") in requested_ids
+            ]
+            if not models:
+                raise BenchmarkError(
+                    "요청한 벤치마크 대상 모델을 찾을 수 없습니다."
+                )
 
         logger.info(
             "%d개 모델 벤치마크 대상 (max_concurrent=%d)",
-            len(available_models),
+            len(models),
             self.max_concurrent,
         )
 
@@ -115,9 +129,11 @@ class BenchmarkRunner:
                     }
 
         results = await asyncio.gather(
-            *[_run_with_semaphore(m) for m in available_models]
+            *[_run_with_semaphore(m) for m in models]
         )
         results = list(results)
+
+        self._update_model_statuses(models_data, results)
 
         benchmark_result = {
             "version": 1,
@@ -137,6 +153,24 @@ class BenchmarkRunner:
 
         logger.info("벤치마크 완료: %d개 모델", len(results))
         return benchmark_result
+
+    def _update_model_statuses(
+        self,
+        models_data: dict[str, Any],
+        results: list[dict[str, Any]],
+    ) -> None:
+        """벤치마크 결과를 모델 캐시의 사용 가능 상태에 반영한다."""
+        result_statuses = {
+            result.get("model_id"): result.get("status", "failed")
+            for result in results
+        }
+        for model in models_data.get("models", []):
+            status = result_statuses.get(model.get("id"))
+            if status == "success":
+                model["status"] = "available"
+            elif status == "failed":
+                model["status"] = "failed"
+        self.storage.save("models", models_data)
 
     async def _benchmark_model(self, model: dict[str, Any]) -> dict[str, Any]:
         """단일 모델에 대한 벤치마크를 실행한다.

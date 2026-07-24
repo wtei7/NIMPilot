@@ -14,6 +14,7 @@ const POLL_INTERVAL_MS = 5000;
 let modelsCache = [];
 let benchmarksCache = [];
 let pollTimer = null;
+let benchmarkTaskId = null;
 const expandedProviders = new Set();
 
 // ---------------------------------------------------------------------------
@@ -151,11 +152,37 @@ async function discoverModels() {
 }
 
 async function runBenchmark() {
-    return withButton(
-        "btn-benchmark",
-        () => apiFetch("/benchmark", { method: "POST", body: "{}" }),
-        "Benchmark started"
-    );
+    const btn = document.getElementById("btn-benchmark");
+    if (!btn || btn.disabled) return;
+
+    const original = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "Benchmark running...";
+    try {
+        const result = await apiFetch("/benchmark", { method: "POST", body: "{}" });
+        benchmarkTaskId = result.task_id;
+        log("info", "Benchmark started");
+        await waitForBenchmark(benchmarkTaskId);
+        log("info", "Benchmark completed");
+        await pollOnce();
+    } catch (e) {
+        log("error", e.message || String(e));
+    } finally {
+        benchmarkTaskId = null;
+        btn.disabled = false;
+        btn.textContent = original;
+    }
+}
+
+async function waitForBenchmark(taskId) {
+    let task = { status: "running" };
+    while (task.status === "running") {
+        await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+        task = await apiFetch(`/benchmark/${encodeURIComponent(taskId)}`);
+    }
+    if (task.status === "failed") {
+        throw new Error(task.error || "Benchmark failed");
+    }
 }
 
 async function generateConfig() {

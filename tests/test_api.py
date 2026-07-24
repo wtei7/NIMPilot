@@ -223,6 +223,16 @@ class TestModels:
                 assert resp.status_code == 200
                 assert resp.json() == {"models": [], "total": 0}
 
+    def test_get_models_omits_zero_context_length(self, client, mock_storage):
+        """GET /models does not expose an unavailable context length."""
+        models = mock_storage.load("models")["models"]
+        models[0]["context_length"] = 0
+
+        resp = client.get("/models")
+
+        assert resp.status_code == 200
+        assert "context_length" not in resp.json()["models"][0]
+
     def test_get_model_by_id(self, client):
         """GET /models/{model_id} returns single model."""
         resp = client.get("/models/nvidia/nemotron-4-340b-instruct")
@@ -279,6 +289,24 @@ class TestBenchmarks:
                 resp = c.get("/benchmarks")
                 assert resp.status_code == 200
                 assert resp.json() == {"benchmarks": []}
+
+    def test_get_benchmarks_normalizes_cached_metrics(self, client, mock_storage):
+        """Flat benchmark cache metrics are returned in the dashboard schema."""
+        benchmark = mock_storage.load("benchmark")
+        benchmark["results"] = [
+            {
+                "model_id": "nvidia/nemotron-4-340b-instruct",
+                "status": "success",
+                "ttft": 0.12,
+                "tps": 85.3,
+            }
+        ]
+
+        resp = client.get("/benchmarks")
+
+        assert resp.status_code == 200
+        metrics = resp.json()["benchmarks"][0]["metrics"]
+        assert metrics == {"ttft_ms": 0.12, "tps": 85.3}
 
 
 # ---------------------------------------------------------------------------

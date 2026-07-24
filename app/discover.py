@@ -26,7 +26,9 @@ MODELS_ENDPOINT = "/models"
 DEFAULT_TIMEOUT = 30
 
 # 모델 상태
-MODEL_STATUS_AVAILABLE = "available"
+# 모델 탐색 API는 실제 호출 가능 여부를 보장하지 않는다. 사용 가능 여부는
+# 벤치마크가 성공한 뒤에만 확정한다.
+MODEL_STATUS_UNKNOWN = "unknown"
 
 
 # ---------------------------------------------------------------------------
@@ -157,19 +159,19 @@ class DiscoverEngine:
             # Description
             description = raw.get("description", "")
 
-            parsed.append(
-                {
-                    "id": model_id,
-                    "name": name,
-                    "alias": alias,
-                    "context_length": context_length,
-                    "input_token_limit": input_token_limit,
-                    "output_token_limit": output_token_limit,
-                    "capabilities": capabilities,
-                    "description": description,
-                    "status": MODEL_STATUS_AVAILABLE,
-                }
-            )
+            model: dict[str, object] = {
+                "id": model_id,
+                "name": name,
+                "alias": alias,
+                "input_token_limit": input_token_limit,
+                "output_token_limit": output_token_limit,
+                "capabilities": capabilities,
+                "description": description,
+                "status": MODEL_STATUS_UNKNOWN,
+            }
+            if isinstance(context_length, int) and context_length > 0:
+                model["context_length"] = context_length
+            parsed.append(model)
 
         logger.info("파싱된 모델 수: %d", len(parsed))
         return parsed

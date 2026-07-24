@@ -145,6 +145,7 @@ class TestBenchmarkRun:
         assert len(result["results"]) == 2
         assert result["results"][0]["status"] == "success"
         assert "benchmark" in saved_data
+        assert saved_data["models"]["models"][0]["status"] == "available"
 
     @pytest.mark.asyncio
     async def test_run_handles_failure(self, mock_config, mock_storage, models_data):
@@ -158,6 +159,70 @@ class TestBenchmarkRun:
 
         assert len(result["results"]) == 2
         assert all(r["status"] == "failed" for r in result["results"])
+        assert all(
+            model["status"] == "failed"
+            for model in models_data["models"]
+        )
+
+    @pytest.mark.asyncio
+    async def test_run_filters_requested_models(
+        self,
+        mock_config,
+        mock_storage,
+        models_data,
+    ):
+        """Only requested model IDs are benchmarked and have status updated."""
+        selected_model = models_data["models"][1]
+        mock_storage.load.side_effect = (
+            lambda key: models_data if key == "models" else {}
+        )
+        runner = BenchmarkRunner(config=mock_config, storage=mock_storage)
+
+        with patch.object(
+            runner,
+            "_benchmark_model",
+            new_callable=AsyncMock,
+        ) as mock_bench:
+            mock_bench.return_value = {
+                "model_id": selected_model["id"],
+                "alias": selected_model["alias"],
+                "status": "success",
+                "tps": 100.0,
+                "ttft": 0.05,
+                "latency": 2.0,
+            }
+            result = await runner.run(model_ids=[selected_model["id"]])
+
+        mock_bench.assert_awaited_once_with(selected_model)
+        assert len(result["results"]) == 1
+        assert models_data["models"][0]["status"] == "available"
+        assert selected_model["status"] == "available"
+
+    @pytest.mark.asyncio
+    async def test_run_rejects_unknown_requested_models(
+        self,
+        mock_config,
+        mock_storage,
+        models_data,
+    ):
+        """Unknown requested model IDs fail before any benchmark API call."""
+        mock_storage.load.side_effect = (
+            lambda key: models_data if key == "models" else {}
+        )
+        runner = BenchmarkRunner(config=mock_config, storage=mock_storage)
+
+        with patch.object(
+            runner,
+            "_benchmark_model",
+            new_callable=AsyncMock,
+        ) as mock_bench:
+            with pytest.raises(
+                BenchmarkError,
+                match="요청한 벤치마크 대상 모델",
+            ):
+                await runner.run(model_ids=["unknown/model"])
+
+        mock_bench.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------

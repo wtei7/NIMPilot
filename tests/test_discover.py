@@ -134,7 +134,15 @@ class TestParseModels:
         assert parsed[0]["name"] == "Llama-3.1-Nemotron-70B-Instruct"
         assert parsed[0]["alias"] == "llama-nemotron-70b"
         assert parsed[0]["context_length"] == 131072
-        assert parsed[0]["status"] == "available"
+        assert parsed[0]["status"] == "unknown"
+
+    def test_parse_omits_unknown_context_length(
+        self, discover_engine: DiscoverEngine
+    ) -> None:
+        """Context length를 제공하지 않는 모델은 해당 필드를 저장하지 않는다."""
+        parsed = discover_engine.parse_models([{"id": "nvidia/no-context"}])
+
+        assert "context_length" not in parsed[0]
 
     def test_parse_capabilities(
         self, discover_engine: DiscoverEngine, nvidia_api_response: list[dict]

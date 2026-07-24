@@ -218,7 +218,14 @@ async def get_models(
             or search_lower in m.get("alias", "").lower()
         ]
 
-    return {"models": models, "total": len(models)}
+    response_models: list[dict[str, Any]] = []
+    for model in models:
+        response_model = dict(model)
+        if not response_model.get("context_length"):
+            response_model.pop("context_length", None)
+        response_models.append(response_model)
+
+    return {"models": response_models, "total": len(response_models)}
 
 
 @app.get("/models/{model_id:path}")
@@ -239,7 +246,10 @@ async def get_model(model_id: str) -> dict[str, Any]:
                 }
             },
         )
-    return model
+    response_model = dict(model)
+    if not response_model.get("context_length"):
+        response_model.pop("context_length", None)
+    return response_model
 
 
 # ---------------------------------------------------------------------------
@@ -263,15 +273,21 @@ async def get_benchmarks(
     if not results:
         return {"benchmarks": []}
 
+    normalized_results = [_normalize_benchmark_result(result) for result in results]
+
     # 모델 필터
     if model_id:
-        results = [r for r in results if r.get("model_id") == model_id]
+        normalized_results = [
+            result
+            for result in normalized_results
+            if result.get("model_id") == model_id
+        ]
 
     # 메트릭 필터 (각 결과에서 지정된 메트릭만 추출)
     if metric:
         metric_key = f"{metric}_ms" if metric in ("ttft", "latency") else metric
         filtered = []
-        for r in results:
+        for r in normalized_results:
             metrics = r.get("metrics", {})
             if metric_key in metrics:
                 filtered.append(
@@ -281,9 +297,37 @@ async def get_benchmarks(
                         "metrics": {metric_key: metrics[metric_key]},
                     }
                 )
-        results = filtered
+        normalized_results = filtered
 
-    return {"benchmarks": results}
+    return {"benchmarks": normalized_results}
+
+
+def _normalize_benchmark_result(result: dict[str, Any]) -> dict[str, Any]:
+    """캐시의 기존·현재 벤치마크 형식을 API 형식으로 통일한다."""
+    if isinstance(result.get("metrics"), dict):
+        return result
+
+    metrics: dict[str, Any] = {}
+    for source, target in (
+        ("ttft", "ttft_ms"),
+        ("tps", "tps"),
+        ("latency", "latency_ms"),
+        ("streaming_tps", "streaming_tps"),
+        ("tool_calling", "tool_calling_success"),
+        ("json_mode", "json_mode_success"),
+    ):
+        if source in result:
+            metrics[target] = result[source]
+
+    normalized = {
+        "model_id": result.get("model_id"),
+        "timestamp": result.get("measured_at", result.get("timestamp")),
+        "status": result.get("status", "unknown"),
+        "metrics": metrics,
+    }
+    if "error" in result:
+        normalized["error"] = result["error"]
+    return normalized
 
 
 @app.post("/benchmark")
@@ -314,7 +358,7 @@ async def run_benchmark(req: BenchmarkRequest) -> dict[str, Any]:
     async def _run() -> None:
         try:
             runner = BenchmarkRunner(config=config, storage=_storage)
-            await runner.run()
+            await runner.run(model_ids=req.model_ids)
             _running_tasks[task_id]["status"] = "completed"
         except Exception as e:
             logger.error("벤치마크 실패: %s", str(e))
@@ -330,6 +374,15 @@ async def run_benchmark(req: BenchmarkRequest) -> dict[str, Any]:
         model_count = len(req.model_ids)
 
     return {"task_id": task_id, "status": "running", "model_count": model_count}
+
+
+@app.get("/benchmark/{task_id}")
+async def get_benchmark_task(task_id: str) -> dict[str, Any]:
+    """벤치마크 비동기 작업의 현재 상태를 조회한다."""
+    task = _running_tasks.get(task_id)
+    if not task or task.get("type") != "benchmark":
+        raise HTTPException(status_code=404, detail="벤치마크 작업을 찾을 수 없습니다.")
+    return {"task_id": task_id, **task}
 
 
 # ---------------------------------------------------------------------------
