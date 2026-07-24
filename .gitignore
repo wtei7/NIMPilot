@@ -15,8 +15,15 @@ logs/
 # Cache (runtime data, not source)
 cache/
 exports/
+.pytest_cache/
+config/generated.yaml
 *.bak
 *.tmp
+
+# Personal/local configuration
+config/favorites.yaml
+.agents/
+.codex/
 
 # IDE
 .vscode/
