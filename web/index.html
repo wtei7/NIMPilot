@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NIMPilot Dashboard</title>
-    <link rel="stylesheet" href="/static/style.css?v=20260723-1">
+    <link rel="stylesheet" href="/static/style.css?v=20260803-1">
 </head>
 <body>
     <header>
@@ -97,11 +97,15 @@
         <div class="charts-container">
             <div class="chart-box">
                 <h3>TPS (Tokens per Second)</h3>
-                <canvas id="chart-tps" width="600" height="300"></canvas>
+                <div class="chart-scroll" tabindex="0" aria-label="TPS chart">
+                    <canvas id="chart-tps"></canvas>
+                </div>
             </div>
             <div class="chart-box">
                 <h3>TTFT (Time to First Token)</h3>
-                <canvas id="chart-ttft" width="600" height="300"></canvas>
+                <div class="chart-scroll" tabindex="0" aria-label="TTFT chart">
+                    <canvas id="chart-ttft"></canvas>
+                </div>
             </div>
         </div>
     </section>
@@ -157,6 +161,6 @@
         <p>NIMPilot v0.1.0 &middot; <a href="/docs">API Docs</a></p>
     </footer>
 
-    <script src="/static/app.js?v=20260723-1"></script>
+    <script src="/static/app.js?v=20260803-1"></script>
 </body>
 </html>

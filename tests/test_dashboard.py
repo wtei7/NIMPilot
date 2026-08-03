@@ -132,18 +132,29 @@ class TestDashboard:
         assert "provider-logo" not in page.text
 
     def test_dashboard_charts_are_responsive(self, client):
-        """고정 크기 캔버스가 모바일 화면을 가로로 넘기지 않는다."""
+        """모델이 많아도 차트 자체만 가로 스크롤된다."""
+        page = client.get("/")
         style = client.get("/static/style.css")
-        assert ".chart-box canvas" in style.text
+        script = client.get("/static/app.js")
+        assert 'class="chart-scroll"' in page.text
+        assert ".chart-scroll" in style.text
         assert "width: 100%" in style.text
+        assert "overflow-x: auto" in style.text
+        assert "const CHART_ITEM_WIDTH = 84" in script.text
+
+    def test_dashboard_charts_hide_zero_values(self, client):
+        """0 이하이거나 유효하지 않은 측정값은 차트에서 제외된다."""
+        script = client.get("/static/app.js")
+        assert "Number.isFinite(value) && value > 0" in script.text
+        assert "No measured data" in script.text
 
     def test_dashboard_static_assets_bypass_stale_browser_cache(self, client):
         """Dashboard 자산은 버전 URL과 재검증 헤더를 사용한다."""
         page = client.get("/")
-        style = client.get("/static/style.css?v=20260723-1")
-        script = client.get("/static/app.js?v=20260723-1")
-        assert 'href="/static/style.css?v=20260723-1"' in page.text
-        assert 'src="/static/app.js?v=20260723-1"' in page.text
+        style = client.get("/static/style.css?v=20260803-1")
+        script = client.get("/static/app.js?v=20260803-1")
+        assert 'href="/static/style.css?v=20260803-1"' in page.text
+        assert 'src="/static/app.js?v=20260803-1"' in page.text
         assert style.headers["cache-control"] == "no-cache, must-revalidate"
         assert script.headers["cache-control"] == "no-cache, must-revalidate"
 

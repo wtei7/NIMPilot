@@ -9,6 +9,9 @@
 
 const API_BASE = ""; // 동일 호스트
 const POLL_INTERVAL_MS = 5000;
+const CHART_HEIGHT = 340;
+const CHART_MIN_WIDTH = 560;
+const CHART_ITEM_WIDTH = 84;
 
 // 상태
 let modelsCache = [];
@@ -444,7 +447,7 @@ function drawCharts(results) {
             label: r.model_id || r.id || "",
             value: (r.metrics && r.metrics.tps) || 0,
         })),
-        { title: "TPS", color: "#4caf50" }
+        { title: "TPS", color: "#76b900" }
     );
     drawBarChart(
         "chart-ttft",
@@ -452,7 +455,7 @@ function drawCharts(results) {
             label: r.model_id || r.id || "",
             value: (r.metrics && r.metrics.ttft_ms) || 0,
         })),
-        { title: "TTFT (ms)", color: "#2196f3" }
+        { title: "TTFT (ms)", color: "#54a8ff" }
     );
 }
 
@@ -460,59 +463,104 @@ function drawBarChart(canvasId, items, opts) {
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
-    const W = canvas.width;
-    const H = canvas.height;
+    const visibleItems = items.filter((item) => {
+        const value = Number(item.value);
+        return Number.isFinite(value) && value > 0;
+    });
+    const viewportWidth = canvas.parentElement
+        ? canvas.parentElement.clientWidth
+        : CHART_MIN_WIDTH;
+    const W = Math.max(
+        CHART_MIN_WIDTH,
+        viewportWidth,
+        visibleItems.length * CHART_ITEM_WIDTH + 88
+    );
+    const H = CHART_HEIGHT;
+    const pixelRatio = window.devicePixelRatio || 1;
+    canvas.width = Math.floor(W * pixelRatio);
+    canvas.height = Math.floor(H * pixelRatio);
+    canvas.style.width = `${W}px`;
+    canvas.style.height = `${H}px`;
+    ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
     ctx.clearRect(0, 0, W, H);
 
-    const padding = { left: 50, right: 20, top: 30, bottom: 60 };
+    const padding = { left: 62, right: 24, top: 46, bottom: 76 };
     const plotW = W - padding.left - padding.right;
     const plotH = H - padding.top - padding.bottom;
 
     // 제목
-    ctx.fillStyle = "#333";
-    ctx.font = "14px sans-serif";
-    ctx.fillText(opts.title || "", padding.left, 20);
+    ctx.fillStyle = "#e4e7ef";
+    ctx.font = "600 14px sans-serif";
+    ctx.fillText(opts.title || "", padding.left, 25);
 
-    items = items.filter((i) => i.value !== null && i.value !== undefined);
-    if (items.length === 0) {
-        ctx.fillStyle = "#999";
-        ctx.fillText("No data", W / 2 - 30, H / 2);
+    if (visibleItems.length === 0) {
+        ctx.fillStyle = "#a9aec2";
+        ctx.font = "14px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("No measured data", W / 2, H / 2);
         return;
     }
 
-    const maxV = Math.max(...items.map((i) => i.value)) || 1;
-    const barW = plotW / items.length;
+    const maxV = Math.max(...visibleItems.map((item) => Number(item.value)));
+    const barSlotW = plotW / visibleItems.length;
+    const barW = Math.min(48, barSlotW * 0.62);
 
-    // 축
-    ctx.strokeStyle = "#ccc";
-    ctx.beginPath();
-    ctx.moveTo(padding.left, padding.top);
-    ctx.lineTo(padding.left, padding.top + plotH);
-    ctx.lineTo(padding.left + plotW, padding.top + plotH);
-    ctx.stroke();
+    // 눈금 및 축
+    ctx.font = "11px sans-serif";
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+    for (let step = 0; step <= 4; step += 1) {
+        const ratio = step / 4;
+        const y = padding.top + plotH - ratio * plotH;
+        ctx.strokeStyle = step === 0 ? "#687087" : "#303546";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(padding.left, y);
+        ctx.lineTo(padding.left + plotW, y);
+        ctx.stroke();
+        ctx.fillStyle = "#a9aec2";
+        ctx.fillText(formatChartValue(maxV * ratio), padding.left - 10, y);
+    }
 
     // 막대
-    ctx.fillStyle = opts.color || "#4caf50";
-    items.forEach((item, i) => {
-        const h = (item.value / maxV) * plotH;
-        const x = padding.left + i * barW + 2;
+    visibleItems.forEach((item, i) => {
+        const value = Number(item.value);
+        const h = (value / maxV) * plotH;
+        const x = padding.left + i * barSlotW + (barSlotW - barW) / 2;
         const y = padding.top + plotH - h;
-        ctx.fillRect(x, y, barW - 4, h);
+        ctx.fillStyle = opts.color || "#76b900";
+        ctx.fillRect(x, y, barW, h);
 
         // 라벨
         ctx.save();
-        ctx.translate(x + (barW - 4) / 2, padding.top + plotH + 8);
-        ctx.rotate(Math.PI / 6);
-        ctx.fillStyle = "#666";
-        ctx.font = "10px sans-serif";
-        ctx.fillText(truncate(item.label, 20), 0, 0);
+        ctx.translate(x + barW / 2, padding.top + plotH + 10);
+        ctx.rotate(Math.PI / 5);
+        ctx.fillStyle = "#c5cada";
+        ctx.font = "11px sans-serif";
+        ctx.textAlign = "left";
+        ctx.textBaseline = "middle";
+        ctx.fillText(truncate(formatChartLabel(item.label), 22), 0, 0);
         ctx.restore();
 
         // 값
-        ctx.fillStyle = "#333";
-        ctx.font = "10px sans-serif";
-        ctx.fillText(item.value.toFixed(1), x + 4, y - 4);
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "600 11px sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "bottom";
+        ctx.fillText(formatChartValue(value), x + barW / 2, y - 5);
     });
+}
+
+function formatChartValue(value) {
+    if (value >= 1000) {
+        return value.toLocaleString(undefined, { maximumFractionDigits: 0 });
+    }
+    return value.toFixed(1);
+}
+
+function formatChartLabel(label) {
+    const parts = String(label || "").split("/");
+    return parts[parts.length - 1];
 }
 
 function truncate(s, n) {
