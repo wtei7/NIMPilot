@@ -22,6 +22,13 @@ from typing import Any
 import yaml
 
 from app.config_manager import AppConfig, _save_yaml, get_config
+from app.model_types import (
+    MODEL_TYPE_EMBEDDING,
+    MODEL_TYPE_GENERATION,
+    MODEL_TYPE_RETRIEVAL,
+    classify_model,
+    is_rerank_model,
+)
 from app.storage import StorageBackend, get_storage
 from app.utils import GeneratorError, get_logger, timestamp
 
@@ -35,17 +42,12 @@ DEFAULT_OUTPUT_PATH = "config/generated.yaml"
 NVIDIA_API_BASE = "https://integrate.api.nvidia.com/v1"
 API_KEY_PLACEHOLDER = "os.environ/NVIDIA_API_KEY"
 LITELLM_MASTER_KEY_PLACEHOLDER = "os.environ/LITELLM_MASTER_KEY"
-
-# 모델 필터링: 제외할 모델 ID 패턴 (예: embedding 모델은 채팅 불가)
-EXCLUDE_PATTERNS: list[str] = [
-    "embed",
-    "rerank",
-    "guard",
-    "retrieval",
-]
+NVIDIA_CUSTOM_LLM_PROVIDER = "openai"
 
 # 모델 상태: "available"인 모델만 포함
 MODEL_STATUS_AVAILABLE = "available"
+MODEL_STATUS_DEPRECATED = "deprecated"
+GENERATION_EXCLUDE_PATTERNS: tuple[str, ...] = ("guard",)
 
 
 # ---------------------------------------------------------------------------
@@ -108,36 +110,64 @@ class ConfigGenerator:
         logger.info("models.json 로드: %d개 모델", len(models))
         return models
 
-    def filter_models(self, models: list[dict]) -> list[dict]:
-        """사용 가능한 채팅/완성 모델만 필터링한다.
+    def load_benchmark_available_model_ids(self) -> set[str]:
+        """최근 벤치마크에서 성공한 모델 ID를 로드한다."""
+        benchmark_data = self.storage.load("benchmark")
+        return {
+            str(result["model_id"])
+            for result in benchmark_data.get("results", [])
+            if result.get("status") == "success" and result.get("model_id")
+        }
 
-        embedding, rerank, guard 등의 모델은 제외한다.
+    def filter_models(
+        self,
+        models: list[dict],
+        benchmark_available_ids: set[str] | None = None,
+    ) -> list[dict]:
+        """LiteLLM에 등록할 생성형 및 검색 모델을 필터링한다.
+
+        생성형 모델은 캐시 상태 또는 최근 벤치마크 성공으로 사용 가능성이
+        확인된 모델만 포함한다.
+        임베딩/리트리벌 모델은 채팅 벤치마크 대상이 아니므로 deprecated
+        상태가 아닌 탐색 모델을 모두 포함한다.
 
         Args:
             models: 전체 모델 목록.
+            benchmark_available_ids: 최근 벤치마크에서 성공한 모델 ID.
 
         Returns:
             필터링된 모델 목록.
         """
         filtered: list[dict] = []
+        available_ids = benchmark_available_ids or set()
 
         for model in models:
-            model_id = model.get("id", "").lower()
-
-            # 상태가 available이 아닌 모델 제외
+            model_id = model.get("id", "")
             status = model.get("status", "")
-            if status != MODEL_STATUS_AVAILABLE:
+            model_type = classify_model(model)
+
+            if model_type == MODEL_TYPE_GENERATION and (
+                status != MODEL_STATUS_AVAILABLE
+                and model_id not in available_ids
+            ):
                 logger.debug("제외 (상태): %s", model_id)
                 continue
 
-            # 제외 패턴에 매칭되는 모델 제외
-            excluded = False
-            for pattern in EXCLUDE_PATTERNS:
-                if pattern in model_id:
-                    logger.debug("제외 (패턴=%s): %s", pattern, model_id)
-                    excluded = True
-                    break
-            if excluded:
+            if (
+                model_type == MODEL_TYPE_GENERATION
+                and any(
+                    pattern in model_id.lower()
+                    for pattern in GENERATION_EXCLUDE_PATTERNS
+                )
+            ):
+                logger.debug("제외 (생성형 패턴): %s", model_id)
+                continue
+
+            if (
+                model_type != MODEL_TYPE_GENERATION
+                and status == MODEL_STATUS_DEPRECATED
+            ):
+                logger.debug("제외 (deprecated 검색 모델): %s", model_id)
                 continue
 
             filtered.append(model)
@@ -161,14 +191,24 @@ class ConfigGenerator:
             "model_name": alias,
             "litellm_params": {
                 "model": model_id,
+                "custom_llm_provider": NVIDIA_CUSTOM_LLM_PROVIDER,
                 "api_base": self.api_base,
                 "api_key": self.api_key_env,
             },
         }
 
-        # context_length 정보 추가 (있는 경우)
+        model_type = classify_model(model)
+        if model_type == MODEL_TYPE_EMBEDDING:
+            entry["model_info"] = {"mode": "embedding"}
+        elif (
+            model_type == MODEL_TYPE_RETRIEVAL
+            and is_rerank_model(model)
+        ):
+            entry["model_info"] = {"mode": "rerank"}
+
+        # 생성형 모델에만 출력 토큰 제한 추가
         context_length = model.get("context_length", 0)
-        if context_length:
+        if context_length and model_type == MODEL_TYPE_GENERATION:
             entry["litellm_params"]["max_tokens"] = model.get(
                 "output_token_limit", 4096
             )
@@ -333,7 +373,11 @@ class ConfigGenerator:
         models = self.load_models()
 
         # 2. 필터링
-        filtered = self.filter_models(models)
+        benchmark_available_ids = self.load_benchmark_available_model_ids()
+        filtered = self.filter_models(
+            models,
+            benchmark_available_ids=benchmark_available_ids,
+        )
         if not filtered:
             raise GeneratorError(
                 "필터링 후 사용 가능한 모델이 없습니다.",

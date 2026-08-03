@@ -199,6 +199,53 @@ class TestBenchmarkRun:
         assert selected_model["status"] == "available"
 
     @pytest.mark.asyncio
+    async def test_run_skips_embedding_and_retrieval_models(
+        self,
+        mock_config,
+        mock_storage,
+        models_data,
+    ):
+        """채팅 벤치마크는 임베딩과 리트리벌 모델을 실행하지 않는다."""
+        models_data["models"].extend(
+            [
+                {
+                    "id": "nvidia/nv-embed-v1",
+                    "alias": "nv-embed",
+                    "capabilities": ["embedding"],
+                    "status": "unknown",
+                },
+                {
+                    "id": "nvidia/nv-rerankqa-retrieval",
+                    "alias": "nv-rerankqa",
+                    "capabilities": ["retrieval"],
+                    "status": "unknown",
+                },
+            ]
+        )
+        mock_storage.load.side_effect = (
+            lambda key: models_data if key == "models" else {}
+        )
+        runner = BenchmarkRunner(config=mock_config, storage=mock_storage)
+
+        with patch.object(
+            runner,
+            "_benchmark_model",
+            new_callable=AsyncMock,
+        ) as mock_bench:
+            mock_bench.return_value = {
+                "model_id": "test-model",
+                "status": "success",
+            }
+            await runner.run()
+
+        benchmarked_ids = {
+            call.args[0]["id"]
+            for call in mock_bench.await_args_list
+        }
+        assert "nvidia/nv-embed-v1" not in benchmarked_ids
+        assert "nvidia/nv-rerankqa-retrieval" not in benchmarked_ids
+
+    @pytest.mark.asyncio
     async def test_run_rejects_unknown_requested_models(
         self,
         mock_config,

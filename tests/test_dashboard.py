@@ -45,6 +45,12 @@ def mock_models_data():
                 "capabilities": ["chat"],
                 "status": "available",
             },
+            {
+                "id": "nvidia/nv-embed-v1",
+                "alias": "nv-embed",
+                "capabilities": ["embedding"],
+                "status": "failed",
+            },
         ],
     }
 
@@ -128,6 +134,10 @@ class TestDashboard:
         assert "const expandedProviders = new Set()" in script.text
         assert "setupModelSearch" in script.text
         assert "renderModelGroup" in script.text
+        assert "getModelType" in script.text
+        assert "hasSeparatedModelLists" in script.text
+        assert "Generation Models" in page.text
+        assert "Embedding &amp; Retrieval Models" in page.text
         assert ".model-group-toggle" in style.text
         assert "provider-logo" not in page.text
 
@@ -185,7 +195,9 @@ class TestApiOverview:
         res = client.get("/api/overview")
         assert res.status_code == 200
         body = res.json()
-        assert body["model_count"] == 2
+        assert body["model_count"] == 3
+        assert body["generation_model_count"] == 2
+        assert body["retrieval_model_count"] == 1
         assert body["litellm_status"] == "running"
         assert body["last_discover"] == "2025-01-01T00:00:00Z"
         assert body["best_coding_model"]["alias"] == "nemotron-4-340b"
@@ -248,7 +260,12 @@ class TestApiModels:
         res = client.get("/api/models")
         assert res.status_code == 200
         body = res.json()
-        assert len(body["models"]) == 2
+        assert len(body["models"]) == 3
+        assert len(body["generation_models"]) == 2
+        assert len(body["retrieval_models"]) == 1
+        assert body["retrieval_models"][0]["model_type"] == "embedding"
+        assert body["retrieval_models"][0]["capabilities"] == ["embedding"]
+        assert body["retrieval_models"][0]["status"] == "unknown"
         assert body["models"][0]["id"] == "nvidia/nemotron-4-340b-instruct"
 
     def test_models_empty(self, client, mock_storage):
