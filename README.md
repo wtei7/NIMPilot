@@ -151,7 +151,7 @@ print(resp.json())  # {"format": "cline", "path": "exports/cline.json", ...}
 
 ```bash
 # 전체 테스트 (271+ 개)
-pip install pytest pytest-asyncio pytest-httpx
+pip install -r requirements-dev.txt
 pytest tests/ -v
 
 # 특정 모듈 테스트
