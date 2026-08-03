@@ -37,8 +37,9 @@ def config():
 
 @pytest.fixture
 def manager(config, storage):
-    """테스트용 LiteLLMManager."""
-    return LiteLLMManager(config=config, storage=storage)
+    """Docker SDK를 격리한 테스트용 LiteLLMManager."""
+    with patch("app.launcher._get_docker_client", return_value=None):
+        yield LiteLLMManager(config=config, storage=storage)
 
 
 def _make_completed_process(
