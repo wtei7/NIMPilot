@@ -9,10 +9,6 @@ permissions:
   contents: write
   pull-requests: read
 
-concurrency:
-  group: release-main
-  cancel-in-progress: false
-
 jobs:
   release:
     if: github.event.pull_request.merged == true
@@ -24,24 +20,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Calculate release version
+      - name: Validate release level
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
-          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
         run: |
           set -euo pipefail
-          git fetch --force --tags
-
-          latest_tag=$(git tag --merged "$MERGE_SHA" --list | grep -Ex 'v[0-9]+\.[0-9]+\.[0-9]+' | sort -Vr | head -n 1 || true)
-          latest_version=${latest_tag#v}
-          if [ -z "$latest_tag" ]; then
-            latest_version="0.0.0"
-          fi
-
-          IFS='.' read -r major minor patch <<EOF
-          $latest_version
-          EOF
-
           major_count=$(printf '%s\n' "$PR_BODY" | grep -Ec '^- \[x\] MAJOR - ' || true)
           minor_count=$(printf '%s\n' "$PR_BODY" | grep -Ec '^- \[x\] MINOR - ' || true)
           patch_count=$(printf '%s\n' "$PR_BODY" | grep -Ec '^- \[x\] PATCH - ' || true)
@@ -51,14 +34,54 @@ jobs:
             echo "Select exactly one release level: MAJOR, MINOR, or PATCH."
             exit 1
           elif [ "$major_count" -eq 1 ]; then
-            version="$((major + 1)).0.0"
+            echo "RELEASE_LEVEL=major" >> "$GITHUB_ENV"
           elif [ "$minor_count" -eq 1 ]; then
-            version="$major.$((minor + 1)).0"
+            echo "RELEASE_LEVEL=minor" >> "$GITHUB_ENV"
           elif [ "$patch_count" -eq 1 ]; then
-            version="$major.$minor.$((patch + 1))"
+            echo "RELEASE_LEVEL=patch" >> "$GITHUB_ENV"
           fi
 
-          echo "VERSION=$version" >> "$GITHUB_ENV"
+      - name: Reserve release version
+        env:
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+        run: |
+          set -euo pipefail
+
+          for attempt in $(seq 1 10); do
+            git fetch --force origin main --tags
+            latest_tag=$(
+              while read -r commit; do
+                git tag --points-at "$commit"
+              done < <(git rev-list --first-parent origin/main) |
+                grep -Ex 'v[0-9]+\.[0-9]+\.[0-9]+' |
+                sort -Vr |
+                head -n 1 || true
+            )
+            latest_version=${latest_tag#v}
+            latest_version=${latest_version:-0.0.0}
+            IFS='.' read -r major minor patch <<EOF
+            $latest_version
+            EOF
+
+            case "$RELEASE_LEVEL" in
+              major) version="$((major + 1)).0.0" ;;
+              minor) version="$major.$((minor + 1)).0" ;;
+              patch) version="$major.$minor.$((patch + 1))" ;;
+            esac
+
+            tag="v$version"
+            git tag "$tag" "$MERGE_SHA"
+            if git push origin "refs/tags/$tag"; then
+              echo "VERSION=$version" >> "$GITHUB_ENV"
+              exit 0
+            fi
+
+            git tag --delete "$tag"
+            sleep "$attempt"
+          done
+
+          echo "Unable to reserve a unique release version after 10 attempts."
+          exit 1
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
@@ -67,10 +90,10 @@ jobs:
           target_commitish: ${{ github.event.pull_request.merge_commit_sha }}
           name: "NIMPilot v${{ env.VERSION }}"
           body: |
-            NIMPilot v${{ env.VERSION }} 릴리스
+            NIMPilot v${{ env.VERSION }} release
 
-            ## 주요 변경 사항
-            - 릴리스 노트는 [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md)를 참조하세요.
+            ## Changes
+            - See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for release notes.
 
           generate_release_notes: true
           draft: false

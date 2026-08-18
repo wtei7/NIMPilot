@@ -2,7 +2,7 @@
 
 ## Commit Message Format
 
-```
+```text
 <type>(<scope>): <subject>
 
 <body>
@@ -36,7 +36,7 @@ Use a task number or module name:
 - Limit to 50 characters.
 - Do not end with a period.
 - Use the imperative mood, for example: `add model discovery engine`.
-- Korean or English is acceptable for commit subjects.
+- Use English for commit subjects.
 
 ### Body
 
@@ -50,7 +50,7 @@ Use a task number or module name:
 
 ## Commit Examples
 
-```
+```text
 feat(task-000): implement foundation modules
 
 - Define Pydantic-based AppConfig models.
@@ -59,9 +59,9 @@ feat(task-000): implement foundation modules
 - Add setup_logging, a retry decorator, and common utility functions.
 
 Complete Task 000 (Foundation).
-```
+```text
 
-```
+```text
 feat(task-001): initialize project and Docker environment
 
 - Create the FastAPI application and the /health endpoint.
