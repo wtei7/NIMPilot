@@ -1,6 +1,6 @@
-# 커밋 규칙 (Commit Convention)
+# Commit Convention
 
-## 커밋 메시지 형식
+## Commit Message Format
 
 ```
 <type>(<scope>): <subject>
@@ -12,109 +12,108 @@
 
 ### Type
 
-| Type | 설명 |
-|------|------|
-| `feat` | 새로운 기능 추가 |
-| `fix` | 버그 수정 |
-| `docs` | 문서 변경 |
-| `style` | 코드 포맷팅, 세미콜론 누락 등 (기능 변경 없음) |
-| `refactor` | 코드 리팩토링 (기능 변경 없음) |
-| `test` | 테스트 추가 또는 수정 |
-| `chore` | 빌드, 설정, 의존성 등 기타 작업 |
-| `ci` | CI 설정 변경 |
+| Type | Description |
+| --- | --- |
+| `feat` | Add a new feature |
+| `fix` | Fix a bug |
+| `docs` | Update documentation |
+| `style` | Apply formatting-only changes |
+| `refactor` | Refactor without changing behavior |
+| `test` | Add or update tests |
+| `chore` | Update build, configuration, dependencies, or other maintenance |
+| `ci` | Change CI configuration |
 
 ### Scope
 
-Task 번호 또는 모듈명을 사용:
+Use a task number or module name:
 
-- `task-000` ~ `task-012`: 각 Task에 해당하는 변경
-- `discover`, `generator`, `benchmark`, `router`, `dashboard`, `api`, `scheduler`: 모듈명
-- `config`, `storage`, `utils`: 기반 모듈
+- `task-000` through `task-012`: changes for a specific task
+- `discover`, `generator`, `benchmark`, `router`, `dashboard`, `api`, `scheduler`: module names
+- `config`, `storage`, `utils`: foundation modules
 
 ### Subject
 
-- 50자 이내
-- 마침표 없음
-- 명령형 (예: "Add model discovery engine" → "모델 탐색 엔진 추가")
-- 한글 또는 영문 가능
+- Limit to 50 characters.
+- Do not end with a period.
+- Use the imperative mood, for example: `add model discovery engine`.
+- Korean or English is acceptable for commit subjects.
 
 ### Body
 
-- 72자마다 줄바꿈
-- "무엇을", "왜" 변경했는지 설명 ( "어떻게"는 코드로 설명)
+- Wrap lines at 72 characters.
+- Explain what changed and why; let the code explain how.
 
 ### Footer
 
-- Breaking Changes: `BREAKING CHANGE:` 접두사
-- 관련 이슈: `Closes #123`, `Refs #456`
+- Breaking changes: use the `BREAKING CHANGE:` prefix.
+- Related issues: use `Closes #123` or `Refs #456`.
 
-## 커밋 예시
-
-```
-feat(task-000): 기반 모듈 구현 (config_manager, storage, utils)
-
-- Pydantic 기반 AppConfig 모델 정의
-- JsonStorageBackend 구현 (원자적 쓰기, 스레드 안전)
-- NIMPilotError 예외 계층 구조
-- setup_logging, retry 데코레이터 등 유틸리티 함수
-
-Task 000 (Foundation) 완료.
-```
+## Commit Examples
 
 ```
-feat(task-001): 프로젝트 초기화 및 Docker 환경 구성
+feat(task-000): implement foundation modules
 
-- FastAPI 앱 생성 및 /health 엔드포인트
-- Dockerfile 및 docker-compose.yml 작성
-- Python 가상환경(.venv) 설정 및 스크립트 연동
-- requirements.txt, .env.example, .gitignore, README.md
+- Define Pydantic-based AppConfig models.
+- Implement JsonStorageBackend with atomic writes and thread safety.
+- Add the NIMPilotError exception hierarchy.
+- Add setup_logging, a retry decorator, and common utility functions.
 
-Task 001 (Project Init) 완료.
+Complete Task 000 (Foundation).
 ```
 
 ```
-feat(task-002): NVIDIA NIM 모델 탐색 엔진 구현
+feat(task-001): initialize project and Docker environment
 
-- DiscoverEngine 클래스 (fetch → parse → save 파이프라인)
-- NVIDIA NIM API /models 호출 (httpx, retry, 에러 처리)
-- 모델 alias 자동 생성
-- capabilities 추정 로직
-- 17개 테스트 (alias, parse, save, fetch, 통합)
+- Create the FastAPI application and the /health endpoint.
+- Add Dockerfile and docker-compose.yml.
+- Configure the Python virtual environment and scripts.
+- Add requirements.txt, .env.example, .gitignore, and README.
 
-Task 002 (Discover Models) 완료.
+Complete Task 001 (Project Init).
 ```
 
-## 브랜치 규칙
+```
+feat(task-002): implement NVIDIA NIM model discovery
 
-- `main`: 배포 가능한 안정 브랜치
-- `feature/<task-number>-<name>`: Task별 기능 개발 브랜치
-- `fix/<issue>-<name>`: 버그 수정 브랜치
+- Add the DiscoverEngine fetch, parse, and save pipeline.
+- Call the NVIDIA API /models endpoint with httpx and retry handling.
+- Generate model aliases automatically.
+- Infer model capabilities.
+- Add tests for aliases, parsing, persistence, fetches, and integration.
 
-## PR 및 릴리즈 규칙
+Complete Task 002 (Discover Models).
+```
 
-- `main`에는 Pull Request를 통해서만 병합한다.
-- PR 제목은 커밋 메시지와 같은 Conventional Commits 형식을 따른다.
-  예: `feat(router): fallback 정책 추가`
-- 모든 PR은 PR 템플릿에서 다음 릴리즈 레벨 중 정확히 하나를 선택한다.
-  - `MAJOR`: 호환되지 않는 API 또는 동작 변경
-  - `MINOR`: 하위 호환되는 기능 추가
-  - `PATCH`: 하위 호환되는 버그 수정 또는 내부 변경
-- `main`에 병합된 모든 PR은 선택한 레벨에 따라 새
-  `vMAJOR.MINOR.PATCH` 태그와 GitHub Release를 생성한다.
-- `main` 병합 전에는 CI와 `PR Format` 검사가 모두 통과해야 한다.
+## Branch Rules
 
-## 커밋 원칙
+- `main`: stable, deployable branch
+- `feature/<task-number>-<name>`: task-specific feature branch
+- `fix/<issue>-<name>`: bug-fix branch
 
-1. **하나의 커밋 = 하나의 논리적 변경**
-   - Task 단위로 커밋을 분리
-   - 서로 다른 기능은 별도 커밋으로
+## Pull Request and Release Rules
 
-2. **커밋 전 테스트 통과 필수**
-   - `python -m pytest tests/ -v` 통과 확인
+- Changes may be merged into `main` only through a pull request.
+- Pull request titles must follow the Conventional Commits format used for commit messages.
+  For example: `feat(router): add fallback policy`
+- Every pull request targeting `main` must select exactly one release level in the PR template:
+  - `MAJOR`: backward-incompatible API or behavior change
+  - `MINOR`: backward-compatible feature addition
+  - `PATCH`: backward-compatible bug fix or internal change
+- Every PR merged into `main` creates a new `vMAJOR.MINOR.PATCH` tag and GitHub Release based on its selected release level.
+- The CI and `PR Format` checks must pass before a PR can be merged into `main`.
 
-3. **Push는 명시적 요청 시에만**
-   - 커밋은 로컬에만 유지
-   - 사용자 승인 후 `git push` 실행
+## Commit Principles
 
-4. **.venv, __pycache__, .env는 커밋하지 않음**
-   - `.gitignore`에 등록됨
+1. **One commit equals one logical change**
+   - Separate commits by task.
+   - Put unrelated features in separate commits.
+
+2. **Tests must pass before committing**
+   - Run `python -m pytest tests/ -v` and confirm it passes.
+
+3. **Push only when explicitly requested**
+   - Keep commits local by default.
+   - Push only after user approval.
+
+4. **Do not commit `.venv`, `__pycache__`, or `.env`**
+   - These files are listed in `.gitignore`.

@@ -1,22 +1,22 @@
-## 변경 요약
+## Summary
 
-<!-- 무엇을, 왜 변경했는지 간단히 작성하세요. -->
+<!-- Briefly describe what changed and why. -->
 
-## 릴리즈 레벨
+## Release level
 
-<!-- 정확히 하나만 선택하세요. -->
+<!-- Select exactly one option. -->
 
-- [ ] MAJOR - 호환되지 않는 API 또는 동작 변경
-- [ ] MINOR - 하위 호환되는 기능 추가
-- [ ] PATCH - 하위 호환되는 버그 수정 또는 내부 변경
+- [ ] MAJOR - Backward-incompatible API or behavior change
+- [ ] MINOR - Backward-compatible feature addition
+- [ ] PATCH - Backward-compatible bug fix or internal change
 
-## 검증
+## Validation
 
-- [ ] `python -m pytest tests/ -v`를 실행했습니다.
-- [ ] 관련 문서를 업데이트했습니다. (해당하는 경우)
+- [ ] I ran `python -m pytest tests/ -v`.
+- [ ] I updated the relevant documentation, when applicable.
 
-## 체크리스트
+## Checklist
 
-- [ ] PR 제목은 Conventional Commits 형식입니다. 예: `feat(api): 모델 조회 추가`
-- [ ] 하나의 논리적 변경만 포함합니다.
-- [ ] 민감한 정보와 불필요한 생성 파일을 포함하지 않았습니다.
+- [ ] The PR title follows Conventional Commits, for example: `feat(api): add model lookup`
+- [ ] This PR contains one logical change.
+- [ ] This PR contains no sensitive information or unnecessary generated files.
