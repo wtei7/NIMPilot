@@ -76,6 +76,13 @@ jobs:
               exit 0
             fi
 
+            if git fetch --force origin "+refs/tags/$tag:refs/tags/$tag"; then
+              if [ "$(git rev-list -n 1 "$tag")" = "$MERGE_SHA" ]; then
+                echo "VERSION=$version" >> "$GITHUB_ENV"
+                exit 0
+              fi
+            fi
+
             git tag --delete "$tag"
             sleep "$attempt"
           done
