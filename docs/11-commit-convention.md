@@ -90,6 +90,19 @@ Task 002 (Discover Models) 완료.
 - `feature/<task-number>-<name>`: Task별 기능 개발 브랜치
 - `fix/<issue>-<name>`: 버그 수정 브랜치
 
+## PR 및 릴리즈 규칙
+
+- `main`에는 Pull Request를 통해서만 병합한다.
+- PR 제목은 커밋 메시지와 같은 Conventional Commits 형식을 따른다.
+  예: `feat(router): fallback 정책 추가`
+- 모든 PR은 PR 템플릿에서 다음 릴리즈 레벨 중 정확히 하나를 선택한다.
+  - `MAJOR`: 호환되지 않는 API 또는 동작 변경
+  - `MINOR`: 하위 호환되는 기능 추가
+  - `PATCH`: 하위 호환되는 버그 수정 또는 내부 변경
+- `main`에 병합된 모든 PR은 선택한 레벨에 따라 새
+  `vMAJOR.MINOR.PATCH` 태그와 GitHub Release를 생성한다.
+- `main` 병합 전에는 CI와 `PR Format` 검사가 모두 통과해야 한다.
+
 ## 커밋 원칙
 
 1. **하나의 커밋 = 하나의 논리적 변경**

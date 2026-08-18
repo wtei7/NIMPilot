@@ -1,24 +1,64 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - "v*"
+  pull_request:
+    branches: [main]
+    types: [closed]
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
 
 jobs:
   release:
+    if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Extract version from tag
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+      - name: Calculate release version
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+          git fetch --force --tags
+
+          latest_tag=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n 1)
+          latest_version=${latest_tag#v}
+          if [ -z "$latest_tag" ]; then
+            latest_version="0.0.0"
+          fi
+
+          IFS='.' read -r major minor patch <<EOF
+          $latest_version
+          EOF
+
+          if printf '%s\n' "$PR_BODY" | grep -Eq '^- \[x\] MAJOR - '; then
+            version="$((major + 1)).0.0"
+          elif printf '%s\n' "$PR_BODY" | grep -Eq '^- \[x\] MINOR - '; then
+            version="$major.$((minor + 1)).0"
+          elif printf '%s\n' "$PR_BODY" | grep -Eq '^- \[x\] PATCH - '; then
+            version="$major.$minor.$((patch + 1))"
+          else
+            echo "No valid release level found in the merged PR."
+            exit 1
+          fi
+
+          echo "VERSION=$version" >> "$GITHUB_ENV"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: "v${{ env.VERSION }}"
+          target_commitish: ${{ github.event.pull_request.merge_commit_sha }}
           name: "NIMPilot v${{ env.VERSION }}"
           body: |
             NIMPilot v${{ env.VERSION }} 릴리스
