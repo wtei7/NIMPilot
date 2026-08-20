@@ -178,6 +178,43 @@ button:disabled {
     border-radius: var(--radius);
 }
 
+.model-list-grid {
+    display: grid;
+    gap: 20px;
+}
+
+.model-list-panel {
+    min-width: 0;
+}
+
+.model-list-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 10px;
+}
+
+.model-list-heading h3 {
+    font-size: 1rem;
+}
+
+.model-list-heading p {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+}
+
+.model-type-count {
+    min-width: 36px;
+    padding: 3px 10px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--accent);
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-align: center;
+}
+
 table {
     width: 100%;
     border-collapse: collapse;

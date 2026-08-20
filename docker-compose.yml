@@ -28,6 +28,8 @@ services:
       - "4000:4000"
     volumes:
       - ./config:/app/config
+    env_file:
+      - .env
     command: ["--config", "/app/config/generated.yaml", "--port", "4000"]
     restart: unless-stopped
 

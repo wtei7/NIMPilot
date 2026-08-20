@@ -18,6 +18,11 @@ from app import __version__
 from app.config_manager import get_config
 from app.exporters import ExporterError, get_exporter
 from app.launcher import LiteLLMManager
+from app.model_types import (
+    MODEL_TYPE_GENERATION,
+    classify_model,
+    with_model_type,
+)
 from app.storage import get_storage
 from app.utils import NIMPilotError, get_env, get_logger, setup_logging, timestamp
 
@@ -201,7 +206,10 @@ async def get_models(
     if not data:
         return {"models": [], "total": 0}
 
-    models = data.get("models", [])
+    models = [
+        with_model_type(model)
+        for model in data.get("models", [])
+    ]
 
     # 카테고리 필터
     if category:
@@ -246,7 +254,7 @@ async def get_model(model_id: str) -> dict[str, Any]:
                 }
             },
         )
-    response_model = dict(model)
+    response_model = with_model_type(model)
     if not response_model.get("context_length"):
         response_model.pop("context_length", None)
     return response_model
@@ -662,6 +670,11 @@ async def api_overview() -> dict:
 
     model_list = models.get("models", []) if models else []
     model_count = len(model_list)
+    generation_model_count = sum(
+        classify_model(model) == MODEL_TYPE_GENERATION
+        for model in model_list
+    )
+    retrieval_model_count = model_count - generation_model_count
 
     litellm_status = (
         metadata.get("litellm_status", "unknown") if metadata else "unknown"
@@ -695,6 +708,8 @@ async def api_overview() -> dict:
 
     return {
         "model_count": model_count,
+        "generation_model_count": generation_model_count,
+        "retrieval_model_count": retrieval_model_count,
         "litellm_status": litellm_status,
         "last_discover": metadata.get("last_discover") if metadata else None,
         "last_benchmark": metadata.get("last_benchmark") if metadata else None,
@@ -716,8 +731,32 @@ async def api_models() -> dict:
     """
     models = _storage.load("models")
     if not models:
-        return {"models": []}
-    return models
+        return {
+            "models": [],
+            "generation_models": [],
+            "retrieval_models": [],
+        }
+
+    normalized_models = [
+        with_model_type(model)
+        for model in models.get("models", [])
+    ]
+    generation_models = [
+        model
+        for model in normalized_models
+        if model["model_type"] == MODEL_TYPE_GENERATION
+    ]
+    retrieval_models = [
+        model
+        for model in normalized_models
+        if model["model_type"] != MODEL_TYPE_GENERATION
+    ]
+    return {
+        **models,
+        "models": normalized_models,
+        "generation_models": generation_models,
+        "retrieval_models": retrieval_models,
+    }
 
 
 @app.get("/api/status")

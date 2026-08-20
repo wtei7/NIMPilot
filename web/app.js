@@ -15,6 +15,8 @@ const CHART_ITEM_WIDTH = 84;
 
 // 상태
 let modelsCache = [];
+let generationModelsCache = [];
+let retrievalModelsCache = [];
 let benchmarksCache = [];
 let pollTimer = null;
 let benchmarkTaskId = null;
@@ -286,11 +288,81 @@ async function loadModels() {
     try {
         const data = await apiFetch("/api/models");
         const models = (data && data.models) || [];
+        const hasSeparatedModelLists =
+            data &&
+            Array.isArray(data.generation_models) &&
+            Array.isArray(data.retrieval_models);
         modelsCache = models;
-        renderModelTable();
+        generationModelsCache = hasSeparatedModelLists
+            ? data.generation_models
+            : models.filter((model) => getModelType(model) === "generation");
+        retrievalModelsCache = hasSeparatedModelLists
+            ? data.retrieval_models
+            : models.filter((model) => getModelType(model) !== "generation");
+        renderModelTables();
     } catch (e) {
         log("error", "models load failed: " + e.message);
     }
+}
+
+function getModelType(model) {
+    if (
+        model.model_type === "generation" ||
+        model.model_type === "embedding" ||
+        model.model_type === "retrieval"
+    ) {
+        return model.model_type;
+    }
+
+    const capabilities = Array.isArray(model.capabilities)
+        ? model.capabilities.map((capability) =>
+              String(capability).toLowerCase()
+          )
+        : [];
+    const searchableText = [model.id, model.name, model.description]
+        .map((value) => String(safe(value, "")).toLowerCase())
+        .join(" ");
+
+    if (
+        capabilities.includes("embedding") ||
+        searchableText.includes("embed")
+    ) {
+        return "embedding";
+    }
+    if (
+        capabilities.includes("rerank") ||
+        capabilities.includes("retrieval") ||
+        searchableText.includes("rerank") ||
+        searchableText.includes("retrieval") ||
+        searchableText.includes("retriever")
+    ) {
+        return "retrieval";
+    }
+    if (searchableText.includes("bge-")) {
+        return "embedding";
+    }
+    return "generation";
+}
+
+function getModelCapabilities(model) {
+    const modelType = getModelType(model);
+    const capabilities = Array.isArray(model.capabilities)
+        ? model.capabilities.map((capability) => String(capability))
+        : [];
+
+    if (modelType === "generation") return capabilities;
+
+    const normalized = capabilities.filter(
+        (capability) => capability.toLowerCase() !== "chat"
+    );
+    if (
+        !normalized.some(
+            (capability) => capability.toLowerCase() === modelType
+        )
+    ) {
+        normalized.push(modelType);
+    }
+    return normalized;
 }
 
 function getModelProvider(model) {
@@ -300,43 +372,67 @@ function getModelProvider(model) {
 }
 
 function getModelSearchText(model) {
-    const capabilities = Array.isArray(model.capabilities)
-        ? model.capabilities.join(" ")
-        : safe(model.capabilities, "");
+    const capabilities = getModelCapabilities(model).join(" ");
     return [
         model.id,
         model.name,
         model.alias,
         capabilities,
         model.status,
+        getModelType(model),
         getModelProvider(model),
     ]
         .map((value) => String(safe(value, "")).toLowerCase())
         .join(" ");
 }
 
-function renderModelTable() {
-    const tbody = document.getElementById("model-table-body");
+function renderModelTables() {
     const search = document.getElementById("model-search");
     const count = document.getElementById("model-search-count");
-    const table = document.getElementById("model-table");
-    if (!tbody || !search || !count || !table) return;
+    if (!search || !count) return;
 
-    const columnCount = table.querySelectorAll("thead th").length;
     const query = search.value.trim().toLowerCase();
-    const filteredModels = query
-        ? modelsCache.filter((model) =>
-              getModelSearchText(model).includes(query)
-          )
-        : modelsCache;
+    const filterModels = (models) =>
+        query
+            ? models.filter((model) =>
+                  getModelSearchText(model).includes(query)
+              )
+            : models;
+    const generationModels = filterModels(generationModelsCache);
+    const retrievalModels = filterModels(retrievalModelsCache);
+    const filteredCount = generationModels.length + retrievalModels.length;
 
     count.textContent = query
-        ? `${filteredModels.length} of ${modelsCache.length} models`
+        ? `${filteredCount} of ${modelsCache.length} models`
         : `${modelsCache.length} models`;
+    setText("generation-model-count", generationModels.length);
+    setText("retrieval-model-count", retrievalModels.length);
 
+    renderModelTable(
+        "generation-model-table",
+        "generation-model-table-body",
+        generationModels,
+        "generation",
+        Boolean(query)
+    );
+    renderModelTable(
+        "retrieval-model-table",
+        "retrieval-model-table-body",
+        retrievalModels,
+        "retrieval",
+        Boolean(query)
+    );
+}
+
+function renderModelTable(tableId, bodyId, filteredModels, groupKey, forceExpanded) {
+    const tbody = document.getElementById(bodyId);
+    const table = document.getElementById(tableId);
+    if (!tbody || !table) return;
+
+    const columnCount = table.querySelectorAll("thead th").length;
     if (filteredModels.length === 0) {
         tbody.innerHTML = `<tr><td colspan="${columnCount}" class="loading">
-            ${modelsCache.length === 0 ? "No models found" : "No matching models"}
+            No ${groupKey} models found
         </td></tr>`;
         return;
     }
@@ -353,20 +449,28 @@ function renderModelTable() {
             providerA.localeCompare(providerB)
         )
         .map(([provider, models]) =>
-            renderModelGroup(provider, models, columnCount, Boolean(query))
+            renderModelGroup(
+                provider,
+                models,
+                columnCount,
+                forceExpanded,
+                groupKey
+            )
         )
         .join("");
 }
 
-function renderModelGroup(provider, models, columnCount, forceExpanded) {
-    const isExpanded = forceExpanded || expandedProviders.has(provider);
-    const encodedProvider = encodeURIComponent(provider);
+function renderModelGroup(provider, models, columnCount, forceExpanded, groupKey) {
+    const providerKey = `${groupKey}:${provider}`;
+    const isExpanded = forceExpanded || expandedProviders.has(providerKey);
+    const encodedProvider = encodeURIComponent(providerKey);
     const groupHeader = `<tr class="model-group-row">
         <td colspan="${columnCount}">
             <button
                 class="model-group-toggle"
                 type="button"
                 data-provider="${escapeHtml(provider)}"
+                data-group="${escapeHtml(groupKey)}"
                 aria-expanded="${isExpanded}"
                 aria-controls="provider-${encodedProvider}"
             >
@@ -381,12 +485,10 @@ function renderModelGroup(provider, models, columnCount, forceExpanded) {
 
     const modelRows = models
         .map((model, index) => {
-            const capabilities = Array.isArray(model.capabilities)
-                ? model.capabilities.join(", ")
-                : safe(model.capabilities);
+            const capabilities = getModelCapabilities(model).join(", ");
             const modelContextCell = columnCount >= 5
-                ? `<td data-label="Context">${escapeHtml(
-                      safe(model.context_length)
+                ? `<td data-label="Type">${escapeHtml(
+                      getModelType(model)
                   )}</td>`
                 : "";
             const rowId = index === 0
@@ -407,21 +509,21 @@ function renderModelGroup(provider, models, columnCount, forceExpanded) {
 
 function setupModelSearch() {
     const search = document.getElementById("model-search");
-    const tbody = document.getElementById("model-table-body");
-    if (!search || !tbody) return;
+    const section = document.getElementById("model-table-section");
+    if (!search || !section) return;
 
-    search.addEventListener("input", renderModelTable);
-    tbody.addEventListener("click", (event) => {
+    search.addEventListener("input", renderModelTables);
+    section.addEventListener("click", (event) => {
         const toggle = event.target.closest(".model-group-toggle");
         if (!toggle || search.value.trim()) return;
 
-        const provider = toggle.dataset.provider;
-        if (expandedProviders.has(provider)) {
-            expandedProviders.delete(provider);
+        const providerKey = `${toggle.dataset.group}:${toggle.dataset.provider}`;
+        if (expandedProviders.has(providerKey)) {
+            expandedProviders.delete(providerKey);
         } else {
-            expandedProviders.add(provider);
+            expandedProviders.add(providerKey);
         }
-        renderModelTable();
+        renderModelTables();
     });
 }
 

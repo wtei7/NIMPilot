@@ -171,6 +171,49 @@ class TestParseModels:
         assert "tool_calling" in parsed[0]["capabilities"]
         assert "coding" in parsed[0]["capabilities"]
 
+    def test_parse_classifies_embedding_model(
+        self, discover_engine: DiscoverEngine
+    ) -> None:
+        """임베딩 모델은 chat 대신 embedding으로 분류한다."""
+        parsed = discover_engine.parse_models(
+            [{"id": "nvidia/nv-embedqa-e5-v5"}]
+        )
+
+        assert parsed[0]["model_type"] == "embedding"
+        assert parsed[0]["capabilities"] == ["embedding"]
+
+    def test_parse_classifies_retrieval_model(
+        self, discover_engine: DiscoverEngine
+    ) -> None:
+        """리트리벌 모델을 별도 용도로 분류한다."""
+        parsed = discover_engine.parse_models(
+            [{"id": "nvidia/nv-rerankqa-retrieval"}]
+        )
+
+        assert parsed[0]["model_type"] == "retrieval"
+        assert "retrieval" in parsed[0]["capabilities"]
+
+    def test_parse_classifies_bge_embedding_family(
+        self, discover_engine: DiscoverEngine
+    ) -> None:
+        """이름에 embed가 없는 BGE 모델도 임베딩으로 분류한다."""
+        parsed = discover_engine.parse_models(
+            [{"id": "baai/bge-m3", "capabilities": ["chat"]}]
+        )
+
+        assert parsed[0]["model_type"] == "embedding"
+        assert parsed[0]["capabilities"] == ["embedding"]
+
+    def test_parse_normalizes_search_model_capabilities(
+        self, discover_engine: DiscoverEngine
+    ) -> None:
+        """검색 모델 capability는 대소문자와 무관하게 정규화한다."""
+        parsed = discover_engine.parse_models(
+            [{"id": "nvidia/nv-embed-v1", "capabilities": ["Chat", "Embedding"]}]
+        )
+
+        assert parsed[0]["capabilities"] == ["Embedding"]
+
     def test_parse_empty_id_skipped(self, discover_engine: DiscoverEngine) -> None:
         """id가 없는 모델은 건너뛴다."""
         raw = [{"id": "", "name": "empty"}, {"id": "valid-id", "name": "Valid"}]

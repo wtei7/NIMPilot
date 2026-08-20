@@ -9,6 +9,11 @@ import re
 import httpx
 
 from app.config_manager import AppConfig, get_config
+from app.model_types import (
+    MODEL_TYPE_EMBEDDING,
+    MODEL_TYPE_RETRIEVAL,
+    classify_model,
+)
 from app.storage import StorageBackend, get_storage
 from app.utils import DiscoverError, get_logger, retry, timestamp
 
@@ -156,6 +161,33 @@ class DiscoverEngine:
                 # 기본 capabilities 추정
                 capabilities = self._infer_capabilities(raw)
 
+            model_type = classify_model(
+                {
+                    **raw,
+                    "capabilities": capabilities,
+                }
+            )
+            if model_type == MODEL_TYPE_EMBEDDING:
+                capabilities = [
+                    capability
+                    for capability in capabilities
+                    if str(capability).lower() != "chat"
+                ]
+                if "embedding" not in {
+                    str(capability).lower() for capability in capabilities
+                }:
+                    capabilities.append("embedding")
+            elif model_type == MODEL_TYPE_RETRIEVAL:
+                capabilities = [
+                    capability
+                    for capability in capabilities
+                    if str(capability).lower() != "chat"
+                ]
+                if "retrieval" not in {
+                    str(capability).lower() for capability in capabilities
+                }:
+                    capabilities.append("retrieval")
+
             # Description
             description = raw.get("description", "")
 
@@ -166,6 +198,7 @@ class DiscoverEngine:
                 "input_token_limit": input_token_limit,
                 "output_token_limit": output_token_limit,
                 "capabilities": capabilities,
+                "model_type": model_type,
                 "description": description,
                 "status": MODEL_STATUS_UNKNOWN,
             }

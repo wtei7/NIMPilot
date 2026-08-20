@@ -74,20 +74,56 @@
                 Loading models...
             </span>
         </div>
-        <div class="table-container">
-            <table id="model-table">
-                <thead>
-                    <tr>
-                        <th>Model ID</th>
-                        <th>Alias</th>
-                        <th>Capabilities</th>
-                        <th>Status</th>
-                    </tr>
-                </thead>
-                <tbody id="model-table-body">
-                    <tr><td colspan="4" class="loading">Loading...</td></tr>
-                </tbody>
-            </table>
+        <div class="model-list-grid">
+            <div class="model-list-panel">
+                <div class="model-list-heading">
+                    <div>
+                        <h3>Generation Models</h3>
+                        <p>Chat, coding, and reasoning models</p>
+                    </div>
+                    <span class="model-type-count" id="generation-model-count">-</span>
+                </div>
+                <div class="table-container">
+                    <table id="generation-model-table">
+                        <thead>
+                            <tr>
+                                <th>Model ID</th>
+                                <th>Alias</th>
+                                <th>Capabilities</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="generation-model-table-body">
+                            <tr><td colspan="4" class="loading">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="model-list-panel">
+                <div class="model-list-heading">
+                    <div>
+                        <h3>Embedding &amp; Retrieval Models</h3>
+                        <p>Embedding, retrieval, and reranking models</p>
+                    </div>
+                    <span class="model-type-count" id="retrieval-model-count">-</span>
+                </div>
+                <div class="table-container">
+                    <table id="retrieval-model-table">
+                        <thead>
+                            <tr>
+                                <th>Model ID</th>
+                                <th>Alias</th>
+                                <th>Type</th>
+                                <th>Capabilities</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="retrieval-model-table-body">
+                            <tr><td colspan="5" class="loading">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     </section>
 

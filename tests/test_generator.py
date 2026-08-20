@@ -164,21 +164,21 @@ class TestLoadModels:
 class TestFilterModels:
     """filter_models 메서드 테스트."""
 
-    def test_filter_excludes_embedding(
+    def test_filter_keeps_embedding(
         self, generator: ConfigGenerator
     ) -> None:
-        """embedding 모델은 제외된다."""
+        """embedding 모델은 LiteLLM 등록 대상에 포함된다."""
         filtered = generator.filter_models(SAMPLE_MODELS)
         ids = [m["id"] for m in filtered]
-        assert "nvidia/nv-embed-v1" not in ids
+        assert "nvidia/nv-embed-v1" in ids
 
-    def test_filter_excludes_rerank(
+    def test_filter_keeps_rerank(
         self, generator: ConfigGenerator
     ) -> None:
-        """rerank 모델은 제외된다."""
+        """rerank/retrieval 모델은 LiteLLM 등록 대상에 포함된다."""
         filtered = generator.filter_models(SAMPLE_MODELS)
         ids = [m["id"] for m in filtered]
-        assert "nvidia/nv-rerankqa-retrieval" not in ids
+        assert "nvidia/nv-rerankqa-retrieval" in ids
 
     def test_filter_excludes_unavailable(
         self, generator: ConfigGenerator
@@ -197,10 +197,41 @@ class TestFilterModels:
         assert "nvidia/llama-3.1-nemotron-70b-instruct" in ids
         assert "nvidia/llama-3.1-nemotron-51b-instruct" in ids
 
+    def test_filter_keeps_benchmark_success_when_status_unknown(
+        self, generator: ConfigGenerator
+    ) -> None:
+        """Discover가 status를 초기화해도 최근 벤치마크 성공 모델을 유지한다."""
+        model = {
+            "id": "nvidia/benchmark-success-model",
+            "alias": "benchmark-success",
+            "capabilities": ["chat"],
+            "status": "unknown",
+        }
+
+        filtered = generator.filter_models(
+            [model],
+            benchmark_available_ids={"nvidia/benchmark-success-model"},
+        )
+
+        assert filtered == [model]
+
+    def test_filter_excludes_guard_generation_model(
+        self, generator: ConfigGenerator
+    ) -> None:
+        """guard 모델은 이번 검색 모델 등록 범위에 포함하지 않는다."""
+        guard_model = {
+            "id": "nvidia/llama-guard-4",
+            "alias": "llama-guard",
+            "capabilities": ["chat"],
+            "status": "available",
+        }
+
+        assert generator.filter_models([guard_model]) == []
+
     def test_filter_count(self, generator: ConfigGenerator) -> None:
-        """5개 중 2개만 남는다 (embedding, rerank, deprecated 제외)."""
+        """deprecated를 제외한 생성형 및 검색 모델이 남는다."""
         filtered = generator.filter_models(SAMPLE_MODELS)
-        assert len(filtered) == 2
+        assert len(filtered) == 4
 
 
 # ---------------------------------------------------------------------------
@@ -218,6 +249,7 @@ class TestBuildModelEntry:
 
         assert entry["model_name"] == "nemotron-70b-instruct"
         assert entry["litellm_params"]["model"] == "nvidia/llama-3.1-nemotron-70b-instruct"
+        assert entry["litellm_params"]["custom_llm_provider"] == "openai"
         assert entry["litellm_params"]["api_base"] == "https://integrate.api.nvidia.com/v1"
         assert entry["litellm_params"]["api_key"] == "os.environ/NVIDIA_API_KEY"
 
@@ -245,6 +277,45 @@ class TestBuildModelEntry:
         entry = generator.build_model_entry(model)
         assert entry["model_name"] == "nvidia/no-alias-model"
 
+    def test_build_embedding_entry_mode(
+        self, generator: ConfigGenerator
+    ) -> None:
+        """임베딩 모델은 LiteLLM embedding mode로 생성한다."""
+        entry = generator.build_model_entry(SAMPLE_MODELS[2])
+
+        assert entry["model_info"]["mode"] == "embedding"
+        assert "max_tokens" not in entry["litellm_params"]
+
+    def test_build_retrieval_entry_mode(
+        self, generator: ConfigGenerator
+    ) -> None:
+        """리트리벌 모델은 NVIDIA NIM rerank mode로 생성한다."""
+        entry = generator.build_model_entry(SAMPLE_MODELS[3])
+
+        assert entry["model_info"]["mode"] == "rerank"
+        assert (
+            entry["litellm_params"]["model"]
+            == "nvidia_nim/ranking/nvidia/nv-rerankqa-retrieval"
+        )
+        assert entry["litellm_params"]["custom_llm_provider"] == "nvidia_nim"
+        assert "max_tokens" not in entry["litellm_params"]
+
+    def test_build_retrieval_parser_uses_completion_mode(
+        self, generator: ConfigGenerator
+    ) -> None:
+        """문서 파싱 retrieval VLM은 rerank mode로 오분류하지 않는다."""
+        entry = generator.build_model_entry(
+            {
+                "id": "nvidia/nemoretriever-parse",
+                "alias": "nemoretriever-parse",
+                "capabilities": ["retrieval"],
+                "status": "unknown",
+            }
+        )
+
+        assert "model_info" not in entry
+        assert "max_tokens" not in entry["litellm_params"]
+
 
 # ---------------------------------------------------------------------------
 # generate_config 테스트
@@ -269,7 +340,7 @@ class TestGenerateConfig:
         """모델 수만큼 model_list 엔트리가 생성된다."""
         filtered = generator.filter_models(SAMPLE_MODELS)
         config = generator.generate_config(filtered)
-        assert len(config["model_list"]) == 2
+        assert len(config["model_list"]) == 4
 
     def test_generate_config_duplicate_alias(
         self, generator: ConfigGenerator
@@ -505,7 +576,7 @@ class TestRun:
 
         assert result["status"] == "generated"
         assert result["file"] == output_path
-        assert result["model_count"] == 2
+        assert result["model_count"] == 4
         assert Path(output_path).exists()
 
     def test_run_yaml_valid(
@@ -527,7 +598,7 @@ class TestRun:
             loaded = yaml.safe_load(f)
 
         assert "model_list" in loaded
-        assert len(loaded["model_list"]) == 2
+        assert len(loaded["model_list"]) == 4
         assert loaded["model_list"][0]["litellm_params"]["api_base"] == "https://integrate.api.nvidia.com/v1"
         assert loaded["model_list"][0]["litellm_params"]["api_key"] == "os.environ/NVIDIA_API_KEY"
 
@@ -578,10 +649,10 @@ class TestRun:
                 "version": 1,
                 "models": [
                     {
-                        "id": "nvidia/embedding-model",
-                        "alias": "embedding",
+                        "id": "nvidia/deprecated-embedding-model",
+                        "alias": "deprecated-embedding",
                         "context_length": 4096,
-                        "status": "available",
+                        "status": "deprecated",
                     }
                 ],
             },

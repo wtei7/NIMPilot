@@ -11,6 +11,7 @@ from typing import Any
 import httpx
 
 from app.config_manager import AppConfig, get_config
+from app.model_types import MODEL_TYPE_GENERATION, classify_model
 from app.storage import StorageBackend, get_storage
 from app.utils import BenchmarkError, get_logger, timestamp
 
@@ -92,6 +93,16 @@ class BenchmarkRunner:
                 raise BenchmarkError(
                     "요청한 벤치마크 대상 모델을 찾을 수 없습니다."
                 )
+
+        models = [
+            model
+            for model in models
+            if classify_model(model) == MODEL_TYPE_GENERATION
+        ]
+        if not models:
+            raise BenchmarkError(
+                "채팅 벤치마크를 실행할 생성형 모델이 없습니다."
+            )
 
         logger.info(
             "%d개 모델 벤치마크 대상 (max_concurrent=%d)",
