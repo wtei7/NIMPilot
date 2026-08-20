@@ -43,6 +43,7 @@ NVIDIA_API_BASE = "https://integrate.api.nvidia.com/v1"
 API_KEY_PLACEHOLDER = "os.environ/NVIDIA_API_KEY"
 LITELLM_MASTER_KEY_PLACEHOLDER = "os.environ/LITELLM_MASTER_KEY"
 NVIDIA_CUSTOM_LLM_PROVIDER = "openai"
+NVIDIA_NIM_CUSTOM_LLM_PROVIDER = "nvidia_nim"
 
 # 모델 상태: "available"인 모델만 포함
 MODEL_STATUS_AVAILABLE = "available"
@@ -200,10 +201,13 @@ class ConfigGenerator:
         model_type = classify_model(model)
         if model_type == MODEL_TYPE_EMBEDDING:
             entry["model_info"] = {"mode": "embedding"}
-        elif (
-            model_type == MODEL_TYPE_RETRIEVAL
-            and is_rerank_model(model)
-        ):
+        elif model_type == MODEL_TYPE_RETRIEVAL and is_rerank_model(model):
+            entry["litellm_params"]["model"] = (
+                f"nvidia_nim/ranking/{model_id}"
+            )
+            entry["litellm_params"]["custom_llm_provider"] = (
+                NVIDIA_NIM_CUSTOM_LLM_PROVIDER
+            )
             entry["model_info"] = {"mode": "rerank"}
 
         # 생성형 모델에만 출력 토큰 제한 추가

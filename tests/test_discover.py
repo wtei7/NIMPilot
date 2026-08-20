@@ -204,6 +204,16 @@ class TestParseModels:
         assert parsed[0]["model_type"] == "embedding"
         assert parsed[0]["capabilities"] == ["embedding"]
 
+    def test_parse_normalizes_search_model_capabilities(
+        self, discover_engine: DiscoverEngine
+    ) -> None:
+        """검색 모델 capability는 대소문자와 무관하게 정규화한다."""
+        parsed = discover_engine.parse_models(
+            [{"id": "nvidia/nv-embed-v1", "capabilities": ["Chat", "Embedding"]}]
+        )
+
+        assert parsed[0]["capabilities"] == ["Embedding"]
+
     def test_parse_empty_id_skipped(self, discover_engine: DiscoverEngine) -> None:
         """id가 없는 모델은 건너뛴다."""
         raw = [{"id": "", "name": "empty"}, {"id": "valid-id", "name": "Valid"}]

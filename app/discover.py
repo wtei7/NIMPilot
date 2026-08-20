@@ -171,17 +171,21 @@ class DiscoverEngine:
                 capabilities = [
                     capability
                     for capability in capabilities
-                    if capability != "chat"
+                    if str(capability).lower() != "chat"
                 ]
-                if "embedding" not in capabilities:
+                if "embedding" not in {
+                    str(capability).lower() for capability in capabilities
+                }:
                     capabilities.append("embedding")
             elif model_type == MODEL_TYPE_RETRIEVAL:
                 capabilities = [
                     capability
                     for capability in capabilities
-                    if capability != "chat"
+                    if str(capability).lower() != "chat"
                 ]
-                if "retrieval" not in capabilities:
+                if "retrieval" not in {
+                    str(capability).lower() for capability in capabilities
+                }:
                     capabilities.append("retrieval")
 
             # Description

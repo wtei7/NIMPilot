@@ -41,7 +41,7 @@ jobs:
       - name: Check dependencies
         run: |
           python -m pip check
-          python -m pip_audit -r requirements.txt
+          python -m pip_audit -r requirements-dev.txt
 
       - name: Export test environment
         run: |

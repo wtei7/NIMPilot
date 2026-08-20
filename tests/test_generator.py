@@ -289,10 +289,15 @@ class TestBuildModelEntry:
     def test_build_retrieval_entry_mode(
         self, generator: ConfigGenerator
     ) -> None:
-        """리트리벌 모델은 LiteLLM rerank mode로 생성한다."""
+        """리트리벌 모델은 NVIDIA NIM rerank mode로 생성한다."""
         entry = generator.build_model_entry(SAMPLE_MODELS[3])
 
         assert entry["model_info"]["mode"] == "rerank"
+        assert (
+            entry["litellm_params"]["model"]
+            == "nvidia_nim/ranking/nvidia/nv-rerankqa-retrieval"
+        )
+        assert entry["litellm_params"]["custom_llm_provider"] == "nvidia_nim"
         assert "max_tokens" not in entry["litellm_params"]
 
     def test_build_retrieval_parser_uses_completion_mode(
