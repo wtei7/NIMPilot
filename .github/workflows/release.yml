@@ -59,9 +59,7 @@ jobs:
             )
             latest_version=${latest_tag#v}
             latest_version=${latest_version:-0.0.0}
-            IFS='.' read -r major minor patch <<EOF
-            $latest_version
-            EOF
+            IFS='.' read -r major minor patch <<< "$latest_version"
 
             case "$RELEASE_LEVEL" in
               major) version="$((major + 1)).0.0" ;;
