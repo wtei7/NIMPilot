@@ -1,0 +1,38 @@
+name: PR Format
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate PR title and release level
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+
+          title_pattern='^(feat|fix|docs|style|refactor|test|chore|ci)(\([a-z0-9][a-z0-9._/-]*\))?!?: .{1,50}$'
+          if ! printf '%s\n' "$PR_TITLE" | grep -Eq "$title_pattern"; then
+            echo "PR title must follow Conventional Commits."
+            echo "Expected: type(scope): subject"
+            exit 1
+          fi
+
+          major_count=$(printf '%s\n' "$PR_BODY" | grep -Ec '^- \[x\] MAJOR - ' || true)
+          minor_count=$(printf '%s\n' "$PR_BODY" | grep -Ec '^- \[x\] MINOR - ' || true)
+          patch_count=$(printf '%s\n' "$PR_BODY" | grep -Ec '^- \[x\] PATCH - ' || true)
+          release_count=$((major_count + minor_count + patch_count))
+
+          if [ "$release_count" -ne 1 ]; then
+            echo "Select exactly one release level: MAJOR, MINOR, or PATCH."
+            exit 1
+          fi
